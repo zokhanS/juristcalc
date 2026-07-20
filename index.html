@@ -1,0 +1,1997 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Судебный & Исполнительный Помощник PRO</title>
+    <style>
+        /* Базовые переменные (Темная тема по умолчанию) */
+        :root {
+            --bg-main: #0b0f19;
+            --bg-panel: #131b2e;
+            --bg-card: #1e2942;
+            --bg-result: linear-gradient(135deg, #112240 0%, #1a3a5c 100%);
+            --text-main: #94a3b8;
+            --text-light: #f8fafc;
+            --text-muted: #64748b;
+            --accent-red: #f43f5e;
+            --accent-red-hover: #e11d48;
+            --accent-blue: #3b82f6;
+            --accent-gold: #fbbf24;
+            --border-color: rgba(255, 255, 255, 0.06);
+            --input-bg: #0f172a;
+            --radius: 12px;
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+            --shadow-md: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            
+            /* Цвета результатов */
+            --res-success-bg: linear-gradient(135deg, #064e3b 0%, #022c22 100%);
+            --res-success-border: #10b981;
+            --res-warning-bg: linear-gradient(135deg, #7c2d12 0%, #451a03 100%);
+            --res-warning-border: #f97316;
+            --res-text-highlight: #fff;
+            --textarea-bg: #090d16;
+            --textarea-color: #34d399;
+            --res-dist-bg: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        }
+
+        /* Светлая тема */
+        body.light-theme {
+            --bg-main: #f1f5f9;
+            --bg-panel: #ffffff;
+            --bg-card: #f8fafc;
+            --bg-result: linear-gradient(135deg, #e0e7ff 0%, #f1f5f9 100%);
+            --text-main: #475569;
+            --text-light: #0f172a;
+            --text-muted: #64748b;
+            --border-color: rgba(0, 0, 0, 0.1);
+            --input-bg: #f8fafc;
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+            
+            /* Цвета результатов для светлой темы */
+            --res-success-bg: linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%);
+            --res-success-border: #16a34a;
+            --res-warning-bg: linear-gradient(135deg, #ffedd5 0%, #fff7ed 100%);
+            --res-warning-border: #ea580c;
+            --res-text-highlight: #0f172a;
+            --textarea-bg: #f8fafc;
+            --textarea-color: #059669;
+            --res-dist-bg: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            line-height: 1.6;
+            padding-bottom: 60px;
+            -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        header {
+            background: var(--bg-panel);
+            opacity: 0.95;
+            backdrop-filter: blur(12px);
+            padding: 24px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 32px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            transition: var(--transition);
+        }
+
+        .header-container {
+            max-width: 100%;
+            padding: 0 10px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        @media (min-width: 1024px) {
+            .header-container {
+                margin-left: 32px;
+                margin-right: auto;
+            }
+        }
+
+        .logo-area h1 {
+            color: var(--text-light);
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 13px;
+            margin-top: 4px;
+            font-weight: 400;
+        }
+
+        /* Блок управления в шапке */
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .theme-toggle-btn {
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-light);
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: var(--transition);
+            white-space: nowrap;
+        }
+        
+        .theme-toggle-btn:hover {
+            background: var(--bg-card);
+            transform: translateY(-1px);
+        }
+
+        /* Мобильные кнопки (тема и меню) */
+        .icon-btn {
+            display: none;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-light);
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+        }
+
+        .icon-btn:hover {
+            background: var(--bg-card);
+        }
+
+        /* Затемнение при открытии меню */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .sidebar-overlay.active {
+            display: block;
+            opacity: 1;
+        }
+
+        .main-layout {
+            max-width: 100%;
+            margin: 0 auto;
+            padding: 0 32px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 32px;
+        }
+
+        @media (min-width: 1024px) {
+            .main-layout {
+                grid-template-columns: 300px minmax(0, 1fr);
+                margin-left: 32px;
+                margin-right: auto;
+            }
+        }
+
+        .sidebar {
+            background-color: var(--bg-panel);
+            border-radius: var(--radius);
+            padding: 24px;
+            border: 1px solid var(--border-color);
+            height: fit-content;
+            box-shadow: var(--shadow-md);
+            transition: var(--transition);
+        }
+
+        .sidebar h2 {
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-light);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Заголовок бокового меню для мобилки */
+        .mobile-sidebar-header {
+            display: none;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .close-sidebar-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 28px;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .sidebar-caption {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 24px;
+            line-height: 1.4;
+        }
+
+        .content-area {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .tabs-container {
+            background-color: var(--bg-panel);
+            border-radius: var(--radius);
+            border: 1px solid var(--border-color);
+            padding: 6px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-sm);
+            width: 100%;
+            overflow: hidden;
+            transition: var(--transition);
+        }
+
+        .tabs-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            width: 100%;
+        }
+
+        .tab-arrow {
+            display: none;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-light);
+            width: 36px;
+            height: 36px;
+            flex-shrink: 0;
+            cursor: pointer;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            transition: var(--transition);
+        }
+
+        .tab-arrow:hover { background: var(--bg-card); }
+
+        .nav-tabs {
+            display: flex;
+            flex: 1;
+            list-style: none;
+            gap: 4px;
+            overflow-x: auto;
+            scrollbar-width: none;
+            scroll-behavior: smooth; /* Для плавного пролистывания */
+        }
+        
+        .nav-tabs::-webkit-scrollbar {
+            display: none;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-main);
+            padding: 12px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: calc(var(--radius) - 4px);
+            cursor: pointer;
+            transition: var(--transition);
+            white-space: nowrap;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-light);
+            background-color: rgba(128, 128, 128, 0.1);
+        }
+
+        .tab-btn.active {
+            color: #fff;
+            background-color: var(--accent-red);
+            box-shadow: 0 4px 12px rgba(244, 63, 94, 0.3);
+        }
+
+        .tab-content {
+            display: none;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 32px;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            width: 100%;
+        }
+
+        .tab-content.active { display: grid; }
+        .tab-content.show { opacity: 1; transform: translateY(0); }
+
+        .workspace-panel {
+            background-color: var(--bg-panel);
+            border-radius: var(--radius);
+            padding: 32px;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-md);
+            height: fit-content;
+            width: 100%;
+            min-width: 0;
+            transition: var(--transition);
+        }
+
+        .panel-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-light);
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+            letter-spacing: -0.01em;
+        }
+
+        .form-group { margin-bottom: 24px; }
+        .form-group label { display: block; font-size: 13px; color: var(--text-light); margin-bottom: 8px; font-weight: 600; }
+        .form-helper { font-size: 12px; color: var(--text-muted); margin-top: 6px; line-height: 1.4; }
+
+        select, input[type="text"], input[type="date"], input[type="number"] {
+            width: 100%;
+            background-color: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: var(--text-light);
+            font-size: 16px;
+            outline: none;
+            transition: var(--transition);
+            -webkit-appearance: none;
+        }
+
+        select:focus, input:focus {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+        }
+
+        input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.6; }
+
+        .radio-group, .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .radio-label, .checkbox-label {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--text-main);
+            user-select: none;
+            transition: var(--transition);
+        }
+
+        .radio-label:hover, .checkbox-label:hover { color: var(--text-light); }
+        .radio-label input, .checkbox-label input { accent-color: var(--accent-red); width: 18px; height: 18px; margin-top: 2px; cursor: pointer; }
+
+        .number-picker {
+            display: flex;
+            max-width: 160px;
+            background-color: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            transition: var(--transition);
+        }
+
+        .number-picker:focus-within {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+        }
+
+        .number-picker button {
+            background: none;
+            border: none;
+            color: var(--text-main);
+            width: 44px;
+            font-size: 18px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .number-picker button:hover { background-color: rgba(128, 128, 128, 0.1); color: var(--text-light); }
+        .number-picker input { border: none; background: none; text-align: center; padding: 10px 0; font-weight: 600; -moz-appearance: textfield; }
+        .number-picker input::-webkit-outer-spin-button,
+        .number-picker input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .number-picker input:focus { box-shadow: none; }
+
+        hr { border: none; border-top: 1px solid var(--border-color); margin: 24px 0; }
+
+        .result-box {
+            background: var(--bg-result);
+            border-left: 4px solid var(--accent-blue);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .result-box.success { background: var(--res-success-bg); border-left-color: var(--res-success-border); }
+        .result-box.warning { background: var(--res-warning-bg); border-left-color: var(--res-warning-border); }
+
+        .result-item {
+            margin-bottom: 14px;
+            font-size: 14px;
+            color: var(--text-main);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.1);
+            padding-bottom: 8px;
+        }
+
+        .result-item:last-child { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+        .result-item strong { color: var(--text-light); font-weight: 500; }
+        .result-item span[id*="val"], .result-item span[id*="final"], .result-item span[id*="jurisdiction"] { font-weight: 600; color: var(--res-text-highlight); }
+
+        .highlight-box {
+            background-color: var(--input-bg);
+            padding: 20px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border-color);
+            margin-top: 20px;
+        }
+
+        textarea {
+            width: 100%;
+            background-color: var(--textarea-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            color: var(--textarea-color);
+            font-family: 'Fira Code', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            resize: vertical;
+            outline: none;
+            margin-bottom: 12px;
+            transition: var(--transition);
+        }
+
+        textarea:focus { border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background-color: var(--accent-red);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            width: 100%;
+        }
+
+        .btn:hover { background-color: var(--accent-red-hover); box-shadow: 0 4px 12px rgba(225, 29, 72, 0.4); }
+        .btn:active { transform: scale(0.98); }
+        .btn-secondary { background-color: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-light); margin-bottom: 12px; }
+        .btn-secondary:hover { background-color: rgba(128,128,128,0.1); box-shadow: none; }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+
+        .modal-window {
+            background-color: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            width: 90%;
+            max-width: 550px;
+            padding: 32px;
+            box-shadow: var(--shadow-md);
+            transform: translateY(-20px);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-overlay.active .modal-window { transform: translateY(0); }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .modal-title { font-size: 18px; font-weight: 700; color: var(--text-light); }
+        .modal-close-btn { background: none; border: none; color: var(--text-muted); font-size: 28px; cursor: pointer; transition: var(--transition); line-height: 1; }
+        .modal-close-btn:hover { color: var(--accent-red); }
+        .modal-footer { margin-top: 24px; display: flex; gap: 12px; }
+
+        .st69-container { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+        .art-accordion { border: 1px solid var(--border-color); border-radius: 8px; background-color: var(--input-bg); overflow: hidden; }
+        .art-header {
+            padding: 14px 18px; background-color: rgba(128, 128, 128, 0.05); cursor: pointer;
+            font-size: 14px; font-weight: 600; color: var(--text-light); display: flex; justify-content: space-between; align-items: center;
+            user-select: none; transition: var(--transition);
+        }
+        .art-header:hover { background-color: rgba(128, 128, 128, 0.1); }
+        .art-header .part-num { color: var(--accent-blue); margin-right: 6px; font-weight: 700; }
+        .art-header span.arrow { font-size: 11px; color: var(--text-muted); transition: transform 0.3s ease; }
+        .art-accordion.open .art-header span.arrow { transform: rotate(180deg); }
+        .art-body {
+            max-height: 0; overflow: hidden; padding: 0 18px; font-size: 13px; color: var(--text-main);
+            background-color: var(--bg-card); transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), padding 0.4s ease; line-height: 1.6;
+        }
+        .art-accordion.highlight-pm { border-color: rgba(251, 191, 36, 0.3); }
+        .art-accordion.highlight-pm .art-header .part-num { color: var(--accent-gold); }
+        .art-accordion.highlight-pm .art-header { border-left: 3px solid var(--accent-gold); }
+
+        /* === АДАПТИВНОСТЬ / MEDIA QUERIES === */
+        #tab-ip-calc.active { display: flex; flex-direction: column; gap: 32px; min-height: calc(100vh - 230px); }
+        .ip-top-row { display: flex; gap: 32px; flex: 1; }
+        .ip-top-row .workspace-panel { flex: 1; margin-bottom: 0; height: auto; overflow-y: auto; }
+        .ip-bottom-row { flex-shrink: 0; width: 100%; }
+
+        @media (max-width: 1100px) {
+            .main-layout { padding: 0 16px; gap: 24px; }
+            .tab-content { gap: 24px; }
+            #tab-ip-calc.active { min-height: auto; display: grid; }
+            .ip-top-row { flex-direction: column; }
+            .ip-top-row .workspace-panel { overflow-y: visible; }
+        }
+
+        @media (max-width: 768px) {
+            header { padding: 16px; }
+            .header-container { flex-direction: row; align-items: center; flex-wrap: nowrap; gap: 8px;}
+            .logo-area h1 { font-size: 15px; line-height: 1.3; margin-right: auto; }
+            .subtitle { display: none; }
+            
+            /* Скрываем текстовую кнопку и показываем иконки */
+            .theme-toggle-btn { display: none; }
+            .icon-btn { display: flex; }
+            .tab-arrow { display: flex; }
+
+            .main-layout { padding: 0 16px; gap: 16px; grid-template-columns: 1fr; }
+            .tab-content { grid-template-columns: 1fr; gap: 16px; }
+            .workspace-panel { padding: 20px; }
+            .radio-group { flex-direction: column !important; gap: 12px !important; }
+            .result-item { flex-direction: column; align-items: flex-start; gap: 4px; }
+            .result-item span { font-size: 16px; }
+
+            /* Глобальные настройки превращаем в выезжающую боковую панель */
+            .sidebar {
+                position: fixed;
+                top: 0;
+                right: -320px;
+                width: 300px;
+                max-width: 80vw;
+                height: 100vh;
+                z-index: 1000;
+                border-radius: 0;
+                border: none;
+                border-left: 1px solid var(--border-color);
+                box-shadow: -5px 0 25px rgba(0,0,0,0.5);
+                transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                overflow-y: auto;
+            }
+            .sidebar.open { right: 0; }
+            .mobile-sidebar-header { display: flex; }
+            .sidebar > h2:not(.mobile-sidebar-header h2) { display: none; }
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div id="sidebar-overlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+    <header>
+        <div class="header-container">
+            <div class="logo-area">
+                <h1>⚖️ Судебный & Исполнительный Помощник PRO</h1>
+                <div class="subtitle">Удобный аналитический инструмент для судебных юристов и специалистов по взысканию</div>
+            </div>
+            
+            <div class="header-actions">
+                <button id="theme-toggle" class="theme-toggle-btn" onclick="toggleTheme()">☀️ Светлая тема</button>
+                
+                <button id="theme-toggle-mobile" class="icon-btn" onclick="toggleTheme()" aria-label="Сменить тему">☀️</button>
+                <button id="mobile-menu-btn" class="icon-btn" onclick="toggleSidebar()" aria-label="Меню параметров">☰</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-layout">
+        
+        <aside class="sidebar">
+            <div class="mobile-sidebar-header">
+                <h2>⚙️ Параметры</h2>
+                <button class="close-sidebar-btn" onclick="toggleSidebar()">&times;</button>
+            </div>
+            <h2>⚙️ Глобальные параметры</h2>
+            <div class="sidebar-caption">Настройки ниже влияют на расчеты во всех вкладках системы.</div>
+            
+            <div class="form-group">
+                <label for="global-status">Статус участника / Должника</label>
+                <select id="global-status" onchange="recalculateAll()">
+                    <option value="citizen">Гражданин / ИП</option>
+                    <option value="organization">Организация (Юр. лицо)</option>
+                </select>
+                <div class="form-helper">Влияет на минимальные лимиты исполнительского сбора и госпошлины.</div>
+            </div>
+
+            <div class="form-group">
+                <label for="global-rate">Текущая ставка ЦБ (%)</label>
+                <div class="number-picker">
+                    <button type="button" onclick="stepNumber('global-rate', -0.5); recalculateAll();">−</button>
+                    <input type="number" id="global-rate" value="16.0" step="0.5" onchange="recalculateAll()">
+                    <button type="button" onclick="stepNumber('global-rate', 0.5); recalculateAll();">+</button>
+                </div>
+                <div class="form-helper">Используется для расчета процентов по ст. 395 ГК РФ и некоторых неустоек.</div>
+            </div>
+            <hr>
+            <div class="form-helper" style="text-align: center; color: var(--text-muted)">Конструктор автоматически учитывает производственный календарь.</div>
+        </aside>
+
+        <section class="content-area">
+            
+            <div class="tabs-container">
+                <div class="tabs-wrapper">
+                    <button class="tab-arrow left-arrow" onclick="prevTab()">◀</button>
+                    
+                    <ul class="nav-tabs" id="nav-tabs-ul">
+                        <li><button class="tab-btn active" onclick="switchTab(event, 'tab-gp')">📊 Пошлина & ст. 395</button></li>
+                        <li><button class="tab-btn" onclick="switchTab(event, 'tab-sr')">📅 Сроки (ГПК / АПК / КАС)</button></li>
+                        <li><button class="tab-btn" onclick="switchTab(event, 'tab-fin-calc')">💵 Доп. Калькуляторы & Индексация</button></li>
+                        <li><button class="tab-btn" onclick="switchTab(event, 'tab-ip-calc')">💰 Исполнительное производство</button></li>
+                        <li><button class="tab-btn" onclick="switchTab(event, 'tab-ip-dates')">⚡ Сроки в ИП & СИД</button></li>
+                        <li><button class="tab-btn" onclick="switchTab(event, 'tab-bankruptcy')">🛡 Банкротство</button></li>
+                    </ul>
+                    
+                    <button class="tab-arrow right-arrow" onclick="nextTab()">▶</button>
+                </div>
+            </div>
+
+            <div id="tab-gp" class="tab-content active">
+                <div class="workspace-panel">
+                    <div class="panel-title">Параметры иска</div>
+                    
+                    <div class="form-group">
+                        <label>Вид производства</label>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="prod-type" value="isk" checked onchange="toggleGpElements()"> Исковое производство (100%)
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="prod-type" value="prikaz" onchange="toggleGpElements()"> Приказное производство (Судебный приказ - 50%)
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="gp-privilege">Льготы и освобождения (ст. 333.36 НК РФ)</label>
+                        <select id="gp-privilege" onchange="calculateGp()">
+                            <option value="none">Нет льгот</option>
+                            <option value="invalid">Инвалиды I или II группы</option>
+                            <option value="pensioner">Пенсионеры (к СФР/Минсоц)</option>
+                            <option value="labor">Трудовые споры / Алименты</option>
+                            <option value="veteran">Ветераны ВОВ</option>
+                        </select>
+                    </div>
+
+                    <div id="non-prop-wrapper" class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="add-non-prop" onchange="toggleNonPropFields()"> Добавить неимущественные требования
+                        </label>
+                        <div id="non-prop-subfields" style="display:none; margin-top: 14px; padding-left: 16px; border-left: 2px solid var(--accent-blue);">
+                            <div class="form-group">
+                                <label for="non-prop-type">Тип требования</label>
+                                <select id="non-prop-type" onchange="calculateGp()">
+                                    <option value="3000">Физическое лицо — 3 000 руб.</option>
+                                    <option value="5000">Расторжение брака в суде — 5 000 руб.</option>
+                                    <option value="20000">Юридическое лицо — 20 000 руб.</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label id="label-count">Количество требований</label>
+                                <div class="number-picker">
+                                    <button type="button" onclick="stepNumber('non-prop-count', -1); calculateGp();">−</button>
+                                    <input type="number" id="non-prop-count" value="1" min="1" max="20" onchange="calculateGp()">
+                                    <button type="button" onclick="stepNumber('non-prop-count', 1); calculateGp();">+</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="include-395" onchange="toggle395Fields()"> Включить в цену иска проценты по ст. 395 ГК РФ
+                        </label>
+                        <div id="fields-395" style="display:none; margin-top:14px; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <div>
+                                <label style="font-size:12px; color:var(--text-main);">Дней просрочки</label>
+                                <input type="number" id="days-395" value="30" oninput="calculateGp()">
+                            </div>
+                            <div>
+                                <label style="font-size:12px; color:var(--text-main);">Ставка ЦБ (% годовых)</label>
+                                <input type="number" id="rate-395" value="16.0" step="0.5" oninput="calculateGp()">
+                            </div>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="form-group">
+                        <label for="main-debt">Сумма исходного долга (руб.)</label>
+                        <input type="number" id="main-debt" value="100000" step="1000" oninput="calculateGp()">
+                    </div>
+
+                    <div id="modification-wrapper" class="form-group">
+                        <label>Изменение цены иска в процессе</label>
+                        <div class="radio-group" style="flex-direction: row; gap: 20px;">
+                            <label class="radio-label"><input type="radio" name="mod-type" value="none" checked onchange="toggleModFields()"> Нет</label>
+                            <label class="radio-label"><input type="radio" name="mod-type" value="up" onchange="toggleModFields()"> Увеличение</label>
+                            <label class="radio-label"><input type="radio" name="mod-type" value="down" onchange="toggleModFields()"> Уменьшение</label>
+                        </div>
+                        <div id="mod-input-container" style="display:none; margin-top:14px;">
+                            <label id="mod-amount-label" for="mod-amount">Новая сумма (руб.)</label>
+                            <input type="number" id="mod-amount" value="100000" oninput="calculateGp()">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Количество соистцов</label>
+                        <div class="number-picker">
+                            <button type="button" onclick="stepNumber('plaintiffs-count', -1); calculateGp();">−</button>
+                            <input type="number" id="plaintiffs-count" value="1" min="1" onchange="calculateGp()">
+                            <button type="button" onclick="stepNumber('plaintiffs-count', 1); calculateGp();">+</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="workspace-panel">
+                    <div class="panel-title">Результаты расчёта</div>
+                    <div class="result-box" id="gp-result-box">
+                        <div class="result-item"><strong>Родовая подсудность:</strong> <span id="res-jurisdiction">-</span></div>
+                        <div class="result-item"><strong>Основание подсудности:</strong> <span id="res-jurisdiction-basis">-</span></div>
+                        <div class="result-item" id="res-395-row" style="display:none;"><strong>Проценты по ст. 395 ГК:</strong> <span id="res-395-val">0</span> руб.</div>
+                        <div class="result-item"><strong>Общая цена иска:</strong> <span id="res-total-price">0</span> руб.</div>
+                        <div class="result-item" style="border-bottom:none; margin-top:10px; padding-top:10px;"><strong>Итоговая госпошлина:</strong> <span id="res-final-gp" style="font-size: 22px; color: var(--res-text-highlight);">0</span> руб.</div>
+                        <div class="result-item" id="res-share-row" style="display:none;"><strong>Доля каждого соистца:</strong> <span id="res-share-val">0</span> руб.</div>
+                        <div class="result-item" id="res-refund-row" style="display:none;"><strong>Возврат из бюджета:</strong> <span id="res-refund-val" style="color:#f97316;">0</span> руб.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Скопировать готовый отчет:</label>
+                        <textarea id="gp-report-text" rows="5" readonly></textarea>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <button class="btn btn-secondary" onclick="copyToClipboard('gp-report-text')">📋 Скопировать отчет в буфер</button>
+                            <button class="btn" onclick="generateWordHeader(); openModal('court-header-modal');">✍ Открыть конструктор шапки иска</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-sr" class="tab-content">
+                <div class="workspace-panel">
+                    <div class="panel-title">Входные данные & Юрисдикция</div>
+                    <div class="form-group">
+                        <label for="sr-code">Процессуальный кодекс</label>
+                        <select id="sr-code" onchange="updateSrokiActions(); calculateSroki();">
+                            <option value="gpk">ГПК РФ (Суды общей юрисдикции)</option>
+                            <option value="apk">АПК РФ (Арбитражный процесс)</option>
+                            <option value="kas">КАС РФ (Административное судопроизводство)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="sr-action">Выберите процессуальное действие / дедлайн</label>
+                        <select id="sr-action" onchange="calculateSroki()"></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="sr-base-date">Дата события / получения / вынесения решения</label>
+                        <input type="date" id="sr-base-date" onchange="calculateSroki()">
+                    </div>
+                    <div class="form-group">
+                        <label>Приостановление производства (дней на паузе) — ст. 110 ГПК / ст. 116 АПК</label>
+                        <div class="number-picker">
+                            <button type="button" onclick="stepNumber('sr-pause', -1); calculateSroki();">−</button>
+                            <input type="number" id="sr-pause" value="0" min="0" onchange="calculateSroki()">
+                            <button type="button" onclick="stepNumber('sr-pause', 1); calculateSroki();">+</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="workspace-panel">
+                    <div class="panel-title">Расчет процессуального дедлайна</div>
+                    <div class="result-box success" id="sr-result-box" style="line-height: 1.8;">
+                        <div id="sr-result-text">Заполните параметры для автоматического подбора процессуального дедлайна.</div>
+                    </div>
+                    <div class="form-group">
+                        <textarea id="sr-report-text" rows="4" readonly></textarea>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                            <button class="btn btn-secondary" onclick="copyToClipboard('sr-report-text')">📋 Скопировать отчет</button>
+                            <button class="btn" style="background-color: var(--accent-blue);" onclick="downloadICS()">📅 Скачать дедлайн (.ics)</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-fin-calc" class="tab-content">
+                <div class="workspace-panel">
+                    <div class="panel-title">Специализированные калькуляторы</div>
+                    <div class="form-group">
+                        <label for="fin-calc-type">Тип расчета</label>
+                        <select id="fin-calc-type" onchange="toggleFinCalcFields(); calculateFinCalc();">
+                            <option value="indexation">Индексация присужденных средств (ст. 208 ГПК / ст. 183 КАС)</option>
+                            <option value="zozpp">Неустойка по ЗоЗПП (3% в день за нарушение сроков услуг)</option>
+                            <option value="ddu">Неустойка по ФЗ-214 (ДДУ застройщика с мультипликатором x2)</option>
+                            <option value="alimony_debt">Задолженность по алиментам по СЗП в РФ (ст. 113 СК)</option>
+                        </select>
+                    </div>
+
+                    <div id="fin-group-indexation" class="fin-fields-group">
+                        <div class="form-group">
+                            <label for="idx-amount">Присужденная сумма (руб.)</label>
+                            <input type="number" id="idx-amount" value="100000" oninput="calculateFinCalc()">
+                        </div>
+                        <div class="form-group">
+                            <label for="idx-start">Месяц начала просрочки</label>
+                            <select id="idx-start" onchange="calculateFinCalc()">
+                                <option value="2024-01">Январь 2024</option>
+                                <option value="2024-06">Июнь 2024</option>
+                                <option value="2025-01">Январь 2025</option>
+                                <option value="2025-06">Июнь 2025</option>
+                                <option value="2026-01">Январь 2026</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="idx-end">Месяц фактического расчета</label>
+                            <select id="idx-end" onchange="calculateFinCalc()">
+                                <option value="2025-12">Декабрь 2025</option>
+                                <option value="2026-03">Март 2026</option>
+                                <option value="2026-06" selected>Июнь 2026</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="fin-group-penalty" class="fin-fields-group" style="display:none;">
+                        <div class="form-group">
+                            <label for="pen-base">Основная сумма обязательства / договора (руб.)</label>
+                            <input type="number" id="pen-base" value="50000" oninput="calculateFinCalc()">
+                        </div>
+                        <div class="form-group">
+                            <label for="pen-days">Количество дней нарушения (просрочки)</label>
+                            <input type="number" id="pen-days" value="15" oninput="calculateFinCalc()">
+                        </div>
+                    </div>
+
+                    <div id="fin-group-alimony" class="fin-fields-group" style="display:none;">
+                        <div class="form-group">
+                            <label for="ali-months">Количество месяцев просрочки (безработный должник)</label>
+                            <input type="number" id="ali-months" value="3" oninput="calculateFinCalc()">
+                        </div>
+                        <div class="form-group">
+                            <label for="ali-share">Доля взыскания алиментов</label>
+                            <select id="ali-share" onchange="calculateFinCalc()">
+                                <option value="0.25">1/4 (На одного ребенка)</option>
+                                <option value="0.33">1/3 (На двух детей)</option>
+                                <option value="0.50">1/2 (На трех и более детей)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="workspace-panel">
+                    <div class="panel-title">Экономическое заключение</div>
+                    <div class="result-box success" id="fin-result-box">
+                        <div id="fin-result-text">Загрузка параметров...</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Бухгалтерский / Расчетный отчет:</label>
+                        <textarea id="fin-report-text" rows="5" readonly></textarea>
+                        <button class="btn btn-secondary" onclick="copyToClipboard('fin-report-text')">📋 Скопировать финансовый расчет</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-ip-calc" class="tab-content">
+                <div class="ip-top-row">
+                    <div class="workspace-panel">
+                        <div class="panel-title">💥 Расчет исполнительского сбора</div>
+                        <div class="form-group">
+                            <label>Характер требования</label>
+                            <div class="radio-group" style="flex-direction: row; gap: 20px;">
+                                <label class="radio-label"><input type="radio" name="ip-type" value="property" checked onchange="toggleIpFields()"> Имущественный</label>
+                                <label class="radio-label"><input type="radio" name="ip-type" value="non-property" onchange="toggleIpFields()"> Неимущественный</label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="ip-force-majeure" onchange="calculateIpCalc()"> ❌ Наличие непреодолимой силы (ч. 6 ст. 112)
+                            </label>
+                        </div>
+
+                        <div id="ip-prop-fields">
+                            <div class="form-group">
+                                <label for="ip-debt-sum">Сумма долга по исполнительному документу (руб.)</label>
+                                <input type="number" id="ip-debt-sum" value="50000" step="1000" oninput="calculateIpCalc()">
+                            </div>
+                            <div class="form-group">
+                                <label for="ip-voluntary-pay">Уплачено ДОБРОВОЛЬНО до дедлайна (руб.)</label>
+                                <input type="number" id="ip-voluntary-pay" value="0" step="1000" oninput="calculateIpCalc()">
+                            </div>
+                        </div>
+
+                        <div class="highlight-box" id="ip-fee-output" style="line-height: 1.7;">
+                            Загрузка расчета...
+                        </div>
+                    </div>
+
+                    <div class="workspace-panel">
+                        <div class="panel-title">📊 Распределение взысканных средств (ст. 111 ФЗ № 229)</div>
+                        <div class="form-group">
+                            <label for="dist-incoming">💰 Всего поступило денег от пристава (руб.)</label>
+                            <input type="number" id="dist-incoming" value="75000" oninput="calculateDistribution()">
+                        </div>
+                        
+                        <div style="padding: 16px; background: rgba(128,128,128,0.05); border-radius: 8px; margin-bottom: 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label style="color:var(--accent-gold); font-size:12px;">1 очередь (Алименты, вред) (руб.)</label>
+                                <input type="number" id="dist-q1" value="20000" oninput="calculateDistribution()">
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label style="color:#60a5fa; font-size:12px;">2 очередь (Зарплата, пособия) (руб.)</label>
+                                <input type="number" id="dist-q2" value="10000" oninput="calculateDistribution()">
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label style="color:var(--text-light); font-size:12px;">3 очередь (Основной долг) (руб.)</label>
+                                <input type="number" id="dist-q3" value="50000" oninput="calculateDistribution()">
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label style="color:var(--text-muted); font-size:12px;">4 очередь (Штрафы, пени) (руб.)</label>
+                                <input type="number" id="dist-q4" value="15000" oninput="calculateDistribution()">
+                            </div>
+                        </div>
+
+                        <div class="result-box" style="background: var(--res-dist-bg); border-left-color: #10b981; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px;">
+                            <div class="result-item" style="border:none; padding:0; flex-direction:column; align-items:flex-start;"><strong>1 очередь:</strong> <span id="dist-res-q1">0</span> ₽</div>
+                            <div class="result-item" style="border:none; padding:0; flex-direction:column; align-items:flex-start;"><strong>2 очередь:</strong> <span id="dist-res-q2">0</span> ₽</div>
+                            <div class="result-item" style="border:none; padding:0; flex-direction:column; align-items:flex-start;"><strong>3 очередь:</strong> <span id="dist-res-q3">0</span> ₽</div>
+                            <div class="result-item" style="border:none; padding:0; flex-direction:column; align-items:flex-start;"><strong>4 очередь:</strong> <span id="dist-res-q4">0</span> ₽</div>
+                            <div class="result-item" style="border:none; padding:0; grid-column: 1 / -1; border-top: 1px dashed rgba(128,128,128,0.2); padding-top: 8px; margin-top: 4px;"><strong>Остаток нераспределен:</strong> <span id="dist-res-rem">0</span> ₽</div>
+                        </div>
+                    </div>
+
+                    <div class="workspace-panel">
+                        <div class="panel-title">🛡 Защита прав должника</div>
+                        <div style="display: flex; flex-direction: column; gap: 24px;">
+                            <div>
+                                <h3 style="color: var(--text-light); font-size: 14px; margin-bottom: 12px;">🛡 Калькулятор и генератор сохранения ПМ</h3>
+                                <div class="form-group">
+                                    <label for="pm-region">Регион проживания должника</label>
+                                    <select id="pm-region" onchange="calculatePM()">
+                                        <option value="25816">Москва (ПМ трудоспособного ~ 25 816 ₽)</option>
+                                        <option value="21119">Санкт-Петербург (~ 21 119 ₽)</option>
+                                        <option value="17733" selected>В целом по РФ (Базовый ПМ ~ 17 733 ₽)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="pm-cat">Категория гражданина</label>
+                                    <select id="pm-cat" onchange="calculatePM()">
+                                        <option value="work">Трудоспособное население</option>
+                                        <option value="pens">Пенсионер</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="pm-dep">Количество иждивенцев (детей/иных лиц)</label>
+                                    <input type="number" id="pm-dep" value="0" min="0" oninput="calculatePM()">
+                                </div>
+                                <div class="highlight-box" style="margin-bottom: 12px;">
+                                    Неподлежащая списанию сумма: <span id="pm-final-val" style="font-weight:700; color:var(--accent-gold);">0</span> ₽
+                                </div>
+                                <button class="btn" onclick="openAlimonyModal()">Генерировать заявление в ФССП</button>
+                            </div>
+                            
+                            <hr style="margin: 0; border-color: var(--border-color);">
+
+                            <div>
+                                <h3 style="color: var(--text-light); font-size: 14px; margin-bottom: 12px;">📋 Чек-лист «Иммунитетное имущество» (ст. 446 ГПК)</h3>
+                                <div class="checkbox-group">
+                                    <label class="checkbox-label"><input type="checkbox" class="imm-check" value="Жилье" onchange="evaluateImmunity()"> Жилое помещение (если оно является единственным пригодным)</label>
+                                    <label class="checkbox-label"><input type="checkbox" class="imm-check" value="Земля" onchange="evaluateImmunity()"> Земельный участок под единственным жильем</label>
+                                    <label class="checkbox-label"><input type="checkbox" class="imm-check" value="Предметы обихода" onchange="evaluateImmunity()"> Предметы домашней обстановки и обихода, одежда</label>
+                                    <label class="checkbox-label"><input type="checkbox" class="imm-check" value="Инструменты" onchange="evaluateImmunity()"> Вещи проф. занятий (стоимостью до 10 000 руб.)</label>
+                                    <label class="checkbox-label"><input type="checkbox" class="imm-check" value="Семена" onchange="evaluateImmunity()"> Семена для очередного посева, скот/птица для личных нужд</label>
+                                    <label class="checkbox-label"><input type="checkbox" class="imm-check" value="Призы" onchange="evaluateImmunity()"> Государственные награды, памятные знаки должника</label>
+                                </div>
+                                <div class="result-box warning" id="imm-box" style="margin-top:20px; padding:15px;">
+                                    <span id="imm-text">Отметьте объекты для проверки юридического иммунитета.</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="workspace-panel ip-bottom-row">
+                    <div class="panel-title">📜 Статья 69. Порядок обращения взыскания на имущество должника</div>
+                    <div class="form-helper" style="text-align: left; margin-top: -16px; margin-bottom: 16px;">Федеральный закон от 02.10.2007 № 229-ФЗ (полный текст частей)</div>
+                    
+                    <div class="st69-container">
+                        <div class="art-accordion">
+                            <div class="art-header" onclick="toggleArtAccordion(this)"><span class="title-text"><span class="part-num">Часть 1.</span> Сущность обращения взыскания</span><span class="arrow">▼</span></div>
+                            <div class="art-body">
+                                Обращение взыскания на имущество должника включает изъятие имущества и (или) его принудительную реализацию либо передачу взыскателю.
+                            </div>
+                        </div>
+
+                        <div class="art-accordion">
+                            <div class="art-header" onclick="toggleArtAccordion(this)"><span class="title-text"><span class="part-num">Часть 1.1.</span> Исключение для малоценного имущества</span><span class="arrow">▼</span></div>
+                            <div class="art-body">
+                                При наличии ходатайства взыскателя об обращении взыскания на имущество должника судебный пристав-исполнитель не вправе отказать в удовлетворении указанного ходатайства в случае, если размер задолженности по исполнительному документу превышает 3 000 рублей.
+                            </div>
+                        </div>
+
+                        <div class="art-accordion">
+                            <div class="art-header" onclick="toggleArtAccordion(this)"><span class="title-text"><span class="part-num">Часть 2.</span> Условия обращения взыскания на имущество</span><span class="arrow">▼</span></div>
+                            <div class="art-body">
+                                Взыскание на имущество должника, в том числе на денежные средства в рублях и иностранной валюте, обращается при отсутствии или недостаточности у него денежных средств, достаточных для исполнения требований, содержащихся в исполнительном документе. Взыскание на имущество должника симметрично обращается также при превышении суммы долга 10 000 рублей (в отношении транспортных средств, акций, имущественных прав).
+                            </div>
+                        </div>
+
+                        <div class="art-accordion">
+                            <div class="art-header" onclick="toggleArtAccordion(this)"><span class="title-text"><span class="part-num">Часть 3.</span> Обращение взыскания на заложенное имущество</span><span class="arrow">▼</span></div>
+                            <div class="art-body">
+                                Взыскание на имущество должника по исполнительным документам обращается в первую очередь на его имущество, заложенное по договору об ипотеке, за исключением случаев, когда должник является залогодателем по договору об ипотеке, обеспечивающему исполнение обязательств, не связанных с залогом данного имущества.
+                            </div>
+                        </div>
+
+                        <div class="art-accordion">
+                            <div class="art-header" onclick="toggleArtAccordion(this)"><span class="title-text"><span class="part-num">Часть 4.</span> Размер взыскания</span><span class="arrow">▼</span></div>
+                            <div class="art-body">
+                                Взыскание на имущество должника обращается в размере, необходимом для исполнения требований, содержащихся в исполнительном документе, с учетом взыскания расходов по совершению исполнительных действий, исполнительского сбора и штрафов, наложенных судебным приставом-исполнителем в процессе исполнения исполнительного документа.
+                            </div>
+                        </div>
+
+                        <div class="art-accordion">
+                            <div class="art-header" onclick="toggleArtAccordion(this)"><span class="title-text"><span class="part-num">Часть 4.1.</span> Обращение взыскания на электронные деньги</span><span class="arrow">▼</span></div>
+                            <div class="art-body">
+                                Обращение взыскания на имущество должника может быть обращено на средства, находящиеся на его банковских счетах, в том числе на счетах, открытых в электронных платежных системах.
+                            </div>
+                        </div>
+
+                        <div class="art-accordion highlight-pm">
+                            <div class="art-header" onclick="toggleArtAccordion(this)"><span class="title-text"><span class="part-num">Часть 5.1.</span> ⭐ Право на сохранение прожиточного минимума</span><span class="arrow">▼</span></div>
+                            <div class="art-body">
+                                Должник-гражданин вправе обратиться в подразделение судебных приставов, в котором ведется исполнительное производство, с заявлением о сохранении заработной платы и иных доходов ежемесячно в размере прожиточного минимума трудоспособного населения в целом по Российской Федерации (прожиточного минимума, установленного в субъекте Российской Федерации по месту жительства должника-гражданина, если оно выше величины прожиточного минимума трудоспособного населения в целом по Российской Федерации) независимо от того, кем возбуждено исполнительное производство.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-ip-dates" class="tab-content">
+                <div class="workspace-panel">
+                    <div class="panel-title">⚡ Сроки предъявления документов к взысканию</div>
+                    <div class="form-group">
+                        <label for="ip-doc-type">Тип исполнительного документа</label>
+                        <select id="ip-doc-type" onchange="calculateIpDates()">
+                            <option value="il">Иполнительный лист (Срок — 3 года)</option>
+                            <option value="sp">Судебный приказ (Срок — 3 года)</option>
+                            <option value="notary">Исполнительная надпись нотариуса (Срок — 3 года)</option>
+                            <option value="kts">Удостоверение комиссии по трудовым спорам (КТС) — 3 месяца</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="ip-doc-start-date">Дата вступления акта в силу / выдачи</label>
+                        <input type="date" id="ip-doc-start-date" onchange="calculateIpDates()">
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="ip-has-interruption" onchange="toggleInterruptionField()"> Срок прерывался (был отзыв или частичный платеж)
+                        </label>
+                    </div>
+                    <div id="ip-interruption-container" class="form-group" style="display:none;">
+                        <label for="ip-interruption-date">Дата прерывания срока</label>
+                        <input type="date" id="ip-interruption-date" onchange="calculateIpDates()">
+                    </div>
+
+                    <div class="result-box" id="ip-doc-status-box">
+                        <span id="ip-doc-status-text">-</span>
+                    </div>
+                </div>
+
+                <div class="workspace-panel">
+                    <div class="panel-title">⚖ Калькулятор исковой давности (СИД ГК РФ)</div>
+                    <div class="form-group">
+                        <label for="sid-type">Тип материального требования</label>
+                        <select id="sid-type" onchange="calculateSID()">
+                            <option value="3">Общий срок давности (3 года — ст. 196 ГК)</option>
+                            <option value="1">Оспоримые сделки (1 год — ст. 181 ГК)</option>
+                            <option value="0.16">Трудовые споры об увольнении (1 месяц — ст. 392 ТК)</option>
+                            <option value="0.5">Взыскание неустойки / пени (3 года по каждому периоду)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="sid-start">Дата, когда лицо узнало о нарушении права</label>
+                        <input type="date" id="sid-start" onchange="calculateSID()">
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="sid-pause" onchange="calculateSID()"> Учесть приостановление (форс-мажор / ВС РФ — ст. 202 ГК)
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="sid-break" onchange="calculateSID()"> Было признание долга / частичная оплата (ст. 203 ГК)
+                        </label>
+                    </div>
+                    <div class="result-box success" id="sid-result-box" style="padding:15px; margin-top:15px;">
+                        <span id="sid-result-text">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-bankruptcy" class="tab-content">
+                <div class="workspace-panel">
+                    <div class="panel-title">🛡 Анализатор признаков банкротства</div>
+                    <div class="form-group">
+                        <label for="bank-type">Категория должника</label>
+                        <select id="bank-type" onchange="calculateBankruptcy()">
+                            <option value="citizen">Физическое лицо / Гражданин</option>
+                            <option value="organization">Юридическое лицо / Компания</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="bank-debt">Общая сумма неисполненных обязательств (руб.)</label>
+                        <input type="number" id="bank-debt" value="550000" oninput="calculateBankruptcy()">
+                    </div>
+                    <div class="form-group">
+                        <label for="bank-months">Срок просрочки исполнения (месяцев)</label>
+                        <input type="number" id="bank-months" value="4" min="0" oninput="calculateBankruptcy()">
+                    </div>
+
+                    <div class="result-box" id="bank-verdict-box" style="padding: 20px;">
+                        <span id="bank-verdict-text">-</span>
+                    </div>
+                </div>
+
+                <div class="workspace-panel">
+                    <div class="panel-title">📊 Калькулятор гарантированных расходов на процедуру</div>
+                    <div class="highlight-box" style="margin-top: 0; line-height: 1.8;">
+                        <div class="result-item"><strong>Депозит суда (управляющий):</strong> <span id="b-cost-deposit">25 000</span> ₽</div>
+                        <div class="result-item"><strong>Публикация «Коммерсантъ»:</strong> <span>~15 000</span> ₽</div>
+                        <div class="result-item"><strong>Публикации ЕФРСБ:</strong> <span>~5 000</span> ₽</div>
+                        <div class="result-item"><strong>Почтовые & Канцелярские расходы:</strong> <span>~3 000</span> ₽</div>
+                        <div class="result-item" style="border-top:1px solid var(--border-color); padding-top:10px; margin-top:10px;">
+                            <strong>Итого гарантированный минимум:</strong> <span id="b-cost-total" style="color:var(--accent-gold); font-size:18px;">48 000</span> ₽
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <div id="court-header-modal" class="modal-overlay" onclick="closeModalOnOverlay(event, 'court-header-modal')">
+        <div class="modal-window">
+            <div class="modal-header">
+                <span class="modal-title">✍ Конструктор шапки иска для Word</span>
+                <button class="modal-close-btn" onclick="closeModal('court-header-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Наименование суда</label>
+                    <input type="text" id="w-court" value="Районный суд города Москвы">
+                </div>
+                <div class="form-group">
+                    <label>Истец (ФИО, адрес, реквизиты)</label>
+                    <input type="text" id="w-ist" value="Иванов Иван Иванович, г. Москва, ул. Новая, д. 5, СНИЛС: 123-456-789 00">
+                </div>
+                <div class="form-group">
+                    <label>Ответчик (ФИО/Организация, адрес)</label>
+                    <input type="text" id="w-otv" value="Petrov Петр Петрович, г. Воронеж, ул. Ленина, д. 12">
+                </div>
+                <button class="btn" onclick="generateWordHeader()">Сформировать текст шапки</button>
+                <textarea id="word-header-output" rows="6" style="margin-top:16px; color: var(--accent-blue); display: block;" readonly></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" style="margin-bottom:0;" onclick="closeModal('court-header-modal')">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="fssp-statement-modal" class="modal-overlay" onclick="closeModalOnOverlay(event, 'fssp-statement-modal')">
+        <div class="modal-window">
+            <div class="modal-header">
+                <span class="modal-title">🛡 Заявление о сохранении доходов (ПМ)</span>
+                <button class="modal-close-btn" onclick="closeModal('fssp-statement-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <textarea id="pm-statement-text" rows="10" style="color:var(--accent-blue);" readonly></textarea>
+                <button class="btn" onclick="copyToClipboard('pm-statement-text')">📋 Скопировать текст заявления</button>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" style="margin-bottom:0;" onclick="closeModal('fssp-statement-modal')">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- УПРАВЛЕНИЕ ТЕМАМИ ---
+        function toggleTheme() {
+            document.body.classList.toggle('light-theme');
+            const isLight = document.body.classList.contains('light-theme');
+            localStorage.setItem('theme', isLight ? 'light' : 'dark');
+            
+            // Обновляем текст кнопки на десктопе
+            document.getElementById('theme-toggle').innerText = isLight ? '🌙 Темная тема' : '☀️ Светлая тема';
+            // Обновляем иконку на мобильном
+            document.getElementById('theme-toggle-mobile').innerText = isLight ? '🌙' : '☀️';
+        }
+
+        // --- УПРАВЛЕНИЕ БОКОВЫМ МЕНЮ НА МОБИЛЬНЫХ УСТРОЙСТВАХ ---
+        function toggleSidebar() {
+            document.querySelector('.sidebar').classList.toggle('open');
+            document.getElementById('sidebar-overlay').classList.toggle('active');
+        }
+
+        // --- УПРАВЛЕНИЕ СТРЕЛКАМИ НАВИГАЦИИ ВКЛАДОК ---
+        function nextTab() {
+            const tabs = Array.from(document.querySelectorAll('.tab-btn'));
+            const activeIndex = tabs.findIndex(tab => tab.classList.contains('active'));
+            if (activeIndex < tabs.length - 1) {
+                tabs[activeIndex + 1].click();
+                tabs[activeIndex + 1].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+        }
+
+        function prevTab() {
+            const tabs = Array.from(document.querySelectorAll('.tab-btn'));
+            const activeIndex = tabs.findIndex(tab => tab.classList.contains('active'));
+            if (activeIndex > 0) {
+                tabs[activeIndex - 1].click();
+                tabs[activeIndex - 1].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+        }
+
+        const IPC_DATABASE = {
+            "2024-01": 1.0086, "2024-02": 1.0068, "2024-03": 1.0039, "2024-04": 1.0050, "2024-05": 1.0074,
+            "2024-06": 1.0064, "2024-07": 1.0114, "2024-08": 1.0020, "2024-09": 1.0048, "2024-10": 1.0075,
+            "2024-11": 1.0120, "2024-12": 1.0090,
+            "2025-01": 1.0075, "2025-02": 1.0060, "2025-03": 1.0052, "2025-04": 1.0045, "2025-05": 1.0050,
+            "2025-06": 1.0055, "2025-07": 1.0090, "2025-08": 1.0030, "2025-09": 1.0040, "2025-10": 1.0060,
+            "2025-11": 1.0070, "2025-12": 1.0080,
+            "2026-01": 1.0065, "2026-02": 1.0050, "2026-03": 1.0045, "2026-04": 1.0040, "2026-05": 1.0042,
+            "2026-06": 1.0048
+        };
+
+        let globalDeadlineDate = null;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            // Инициализация темы
+            if (localStorage.getItem('theme') === 'light') {
+                document.body.classList.add('light-theme');
+            }
+            const isLight = document.body.classList.contains('light-theme');
+            document.getElementById('theme-toggle').innerText = isLight ? '🌙 Темная тема' : '☀️ Светлая тема';
+            document.getElementById('theme-toggle-mobile').innerText = isLight ? '🌙' : '☀️';
+
+            const todayStr = new Date().toISOString().split('T')[0];
+            document.getElementById('sr-base-date').value = todayStr;
+            document.getElementById('ip-doc-start-date').value = todayStr;
+            document.getElementById('ip-interruption-date').value = todayStr;
+            document.getElementById('sid-start').value = todayStr;
+            
+            updateSrokiActions();
+            recalculateAll();
+            
+            const activeTab = document.querySelector('.tab-content.active');
+            if (activeTab) setTimeout(() => activeTab.classList.add('show'), 50);
+        });
+
+        function openModal(modalId) {
+            document.getElementById(modalId).classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        function closeModalOnOverlay(event, modalId) {
+            if (event.target === document.getElementById(modalId)) {
+                closeModal(modalId);
+            }
+        }
+
+        function recalculateAll() {
+            calculateGp();
+            calculateSroki();
+            calculateFinCalc();
+            calculateIpCalc();
+            calculateDistribution();
+            calculatePM();
+            evaluateImmunity();
+            calculateIpDates();
+            calculateSID();
+            calculateBankruptcy();
+        }
+
+        function switchTab(evt, tabId) {
+            const tabcontents = document.getElementsByClassName("tab-content");
+            const tablinks = document.getElementsByClassName("tab-btn");
+            for (let i = 0; i < tabcontents.length; i++) tabcontents[i].classList.remove("show");
+            for (let i = 0; i < tablinks.length; i++) tablinks[i].classList.remove("active");
+            evt.currentTarget.classList.add("active");
+            
+            setTimeout(() => {
+                for (let i = 0; i < tabcontents.length; i++) tabcontents[i].classList.remove("active");
+                const targetTab = document.getElementById(tabId);
+                targetTab.classList.add("active");
+                setTimeout(() => targetTab.classList.add('show'), 30);
+            }, 150);
+        }
+
+        function stepNumber(inputId, step) {
+            const input = document.getElementById(inputId);
+            let val = parseFloat(input.value) || 0;
+            val += step;
+            if (input.min !== "" && val < parseFloat(input.min)) val = parseFloat(input.min);
+            input.value = val;
+        }
+
+        function toggleArtAccordion(headerEl) {
+            const accordion = headerEl.parentElement;
+            const body = accordion.querySelector('.art-body');
+            const isOpen = accordion.classList.contains('open');
+            
+            if (!isOpen) {
+                accordion.classList.add('open');
+                body.style.padding = '16px 18px';
+                body.style.maxHeight = body.scrollHeight + 'px';
+                
+                setTimeout(() => {
+                    if (accordion.classList.contains('open')) {
+                        body.style.maxHeight = 'none';
+                    }
+                }, 400);
+            } else {
+                if (body.style.maxHeight === 'none') {
+                    body.style.maxHeight = body.scrollHeight + 'px';
+                    body.offsetHeight; 
+                }
+                
+                setTimeout(() => {
+                    accordion.classList.remove('open');
+                    body.style.maxHeight = '0px';
+                    body.style.padding = '0px 18px';
+                }, 10);
+            }
+        }
+
+        const OFFICIAL_HOLIDAYS = ["1-1", "1-2", "1-3", "1-4", "1-5", "1-6", "1-7", "1-8", "2-23", "3-8", "5-1", "5-9", "6-12", "11-4"];
+        
+        function isHoliday(date) {
+            if (date.getDay() === 0 || date.getDay() === 6) return true;
+            return OFFICIAL_HOLIDAYS.includes(`${date.getMonth() + 1}-${date.getDate()}`);
+        }
+
+        function addWorkingDays(startDate, daysCount, direction = 1) {
+            let current = new Date(startDate);
+            let added = 0;
+            while (added < daysCount) {
+                current.setDate(current.getDate() + direction);
+                if (!isHoliday(current)) added++;
+            }
+            return current;
+        }
+
+        function formatDate(date) {
+            return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        }
+
+        function updateSrokiActions() {
+            const code = document.getElementById('sr-code').value;
+            const actionSelect = document.getElementById('sr-action');
+            actionSelect.innerHTML = "";
+
+            const options = {
+                gpk: [
+                    { value: "gpk_acceptance", text: "Принятие иска к производству (5 рабочих дней — ст. 133 ГПК)" },
+                    { value: "gpk_mirovoy", text: "Рассмотрение дела у мирового судьи (1 месяц — ст. 154 ГПК)" },
+                    { value: "gpk_rayon", text: "Рассмотрение в районном суде (2 месяца — ст. 154 ГПК)" },
+                    { value: "gpk_reduced", text: "Сокращенный срок: алименты, увольнения (1 месяц — ст. 154 ГПК)" },
+                    { value: "gpk_speedup", text: "Рассмотрение заявления об ускорении дела (5 рабочих дней — ст. 6.1 ГПК)" },
+                    { value: "gpk_appeal", text: "Апелляционная жалоба (1 месяц — ст. 321 ГПК РФ)" },
+                    { value: "gpk_private", text: "Частная жалоба (15 дней — ст. 332 ГПК РФ)" },
+                    { value: "gpk_protocol", text: "Замечания на протокол с/з (5 рабочих дней — ст. 231 ГПК)" },
+                    { value: "gpk_prikaz", text: "Возражения на судебный приказ (10 рабочих дней — ст. 128 ГПК)" },
+                    { value: "gpk_zaoch", text: "Отмена заочного решения ответчиком (7 дней — ст. 237 ГПК РФ)" },
+                    { value: "gpk_mot_pres", text: "Заявление о мотивированном решении: присутствовали (3 дня — ст. 199 ГПК)" },
+                    { value: "gpk_mot_abs", text: "Заявление о мотивированном решении: отсутствовали (15 дней — ст. 199 ГПК)" },
+                    { value: "gpk_cass", text: "Кассационная жалоба в КСОЮ (3 месяца — ФЗ № 79-ФЗ)" },
+                    { value: "gpk_nadzor", text: "Надзорная жалоба (3 месяца — ст. 391.2 ГПК РФ)" },
+                    { value: "gpk_notice", text: "Срок извещения (Расчет разумной даты отправки повесток — ст. 113 ГПК)" }
+                ],
+                apk: [
+                    { value: "apk_appeal", text: "Апелляционная жалоба в АС (1 месяц — ст. 259 АПК)" },
+                    { value: "apk_cass", text: "Кассация в Окружной суд (2 месяца — ст. 276 АПК)" },
+                    { value: "apk_sc", text: "Вторая кассация в ВС РФ (2 месяца — ст. 291.2 АПК)" },
+                    { value: "apk_fast", text: "Апелляция по упрощенному производству (15 дней — ст. 229 АПК)" }
+                ],
+                kas: [
+                    { value: "kas_appeal", text: "Апелляционная жалоба по КАС (1 месяц — ст. 298 КАС)" },
+                    { value: "kas_pristav", text: "Оспаривание действий пристава в суд (10 дней — ст. 219 КАС)" },
+                    { value: "kas_cadastre", text: "Оспаривание результатов кадастровой стоимости (3 месяца — ст. 245 КАС)" }
+                ]
+            };
+
+            options[code].forEach(opt => {
+                let el = document.createElement('option');
+                el.value = opt.value;
+                el.innerText = opt.text;
+                actionSelect.appendChild(el);
+            });
+        }
+
+        function calculateSroki() {
+            const action = document.getElementById('sr-action').value;
+            const baseDateVal = document.getElementById('sr-base-date').value;
+            const pauseDays = parseInt(document.getElementById('sr-pause').value) || 0;
+            if (!baseDateVal) return;
+
+            let baseDate = new Date(baseDateVal);
+            let startDate = new Date(baseDate);
+            startDate.setDate(startDate.getDate() + 1);
+            let deadlineDate = new Date(startDate);
+            let label = "";
+
+            if (action === "gpk_acceptance" || action === "gpk_speedup" || action === "gpk_protocol") {
+                deadlineDate = addWorkingDays(baseDate, 5);
+                label = "5 рабочих дней";
+            } else if (action === "gpk_prikaz") {
+                deadlineDate = addWorkingDays(baseDate, 10);
+                label = "10 рабочих дней";
+            } else if (action === "gpk_private" || action === "apk_fast" || action === "gpk_mot_abs" || action === "gpk_notice") {
+                deadlineDate.setDate(startDate.getDate() + 14);
+                label = "15 календарных дней";
+            } else if (action === "kas_pristav") {
+                deadlineDate.setDate(startDate.getDate() + 9);
+                label = "10 календарных дней";
+            } else if (action === "gpk_zaoch") {
+                deadlineDate.setDate(startDate.getDate() + 6);
+                label = "7 календарных дней";
+            } else if (action === "gpk_mot_pres") {
+                deadlineDate.setDate(startDate.getDate() + 2);
+                label = "3 календарных дня";
+            } else {
+                let months = 1;
+                if (action === "gpk_rayon" || action === "apk_cass" || action === "apk_sc") months = 2;
+                if (action === "gpk_cass" || action === "kas_cadastre" || action === "gpk_nadzor") months = 3;
+                
+                deadlineDate.setMonth(startDate.getMonth() + months);
+                if (deadlineDate.getDate() !== startDate.getDate()) deadlineDate.setDate(0);
+                label = `${months} мес.`;
+            }
+
+            if (pauseDays > 0) deadlineDate.setDate(deadlineDate.getDate() + pauseDays);
+
+            let wasShifted = false;
+            let origDate = new Date(deadlineDate);
+            while (isHoliday(deadlineDate)) {
+                deadlineDate.setDate(deadlineDate.getDate() + 1);
+                wasShifted = true;
+            }
+
+            globalDeadlineDate = new Date(deadlineDate);
+
+            document.getElementById('sr-result-text').innerHTML = 
+                `• <strong>Начало течения:</strong> ${formatDate(startDate)}<br>` +
+                `• <strong>Срок:</strong> ${label}<br>` +
+                `🔥 <strong>СУДЕБНЫЙ ДЕДЛАЙН: ${formatDate(deadlineDate)}</strong>` +
+                (wasShifted ? `<br><small style="color:var(--accent-gold)">* Перенос с выходного ${formatDate(origDate)}</small>` : "");
+            
+            document.getElementById('sr-report-text').value = `Процессуальный срок рассчитан. Предельная дата подачи документов: ${formatDate(deadlineDate)}. Действие: ${document.getElementById('sr-action').options[document.getElementById('sr-action').selectedIndex].text}`;
+        }
+
+        function downloadICS() {
+            if (!globalDeadlineDate) {
+                alert("Сначала выберите параметры и рассчитайте срок!");
+                return;
+            }
+            const actionSelect = document.getElementById('sr-action');
+            const actionText = actionSelect.options[actionSelect.selectedIndex].text;
+            
+            const year = globalDeadlineDate.getFullYear();
+            const month = String(globalDeadlineDate.getMonth() + 1).padStart(2, '0');
+            const day = String(globalDeadlineDate.getDate()).padStart(2, '0');
+            
+            const nextDay = new Date(globalDeadlineDate);
+            nextDay.setDate(nextDay.getDate() + 1);
+            const eYear = nextDay.getFullYear();
+            const eMonth = String(nextDay.getMonth() + 1).padStart(2, '0');
+            const eDay = String(nextDay.getDate()).padStart(2, '0');
+
+            const icsContent = [
+                "BEGIN:VCALENDAR",
+                "VERSION:2.0",
+                "PRODID:-//Sudebny Pomoshnik PRO//RU",
+                "BEGIN:VEVENT",
+                `UID:deadline-${Date.now()}@urcalc.pro`,
+                `DTSTAMP:${year}${month}${day}T000000Z`,
+                `DTSTART;VALUE=DATE:${year}${month}${day}`,
+                `DTEND;VALUE=DATE:${eYear}${eMonth}${eDay}`,
+                `SUMMARY:Судебный дедлайн: ${actionText}`,
+                "DESCRIPTION:Автоматический расчет процессуального срока в Помощнике PRO.",
+                "STATUS:CONFIRMED",
+                "END:VEVENT",
+                "END:VCALENDAR"
+            ].join("\r\n");
+
+            const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `deadline_${year}${month}${day}.ics`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function toggleFinCalcFields() {
+            const type = document.getElementById('fin-calc-type').value;
+            document.getElementById('fin-group-indexation').style.display = type === 'indexation' ? 'block' : 'none';
+            document.getElementById('fin-group-penalty').style.display = (type === 'zozpp' || type === 'ddu') ? 'block' : 'none';
+            document.getElementById('fin-group-alimony').style.display = type === 'alimony_debt' ? 'block' : 'none';
+        }
+
+        function calculateFinCalc() {
+            const type = document.getElementById('fin-calc-type').value;
+            let resultText = "";
+            let reportText = "";
+
+            if (type === 'indexation') {
+                const amount = parseFloat(document.getElementById('idx-amount').value) || 0;
+                const startStr = document.getElementById('idx-start').value;
+                const endStr = document.getElementById('idx-end').value;
+                
+                let keys = Object.keys(IPC_DATABASE).sort();
+                let multiplier = 1.0;
+                let inRange = false;
+
+                keys.forEach(k => {
+                    if (k === startStr) inRange = true;
+                    if (inRange) multiplier *= IPC_DATABASE[k];
+                    if (k === endStr) inRange = false;
+                });
+
+                let indexedAmount = amount * multiplier;
+                let delta = indexedAmount - amount;
+
+                resultText = `📊 <strong>Сумма с индексацией:</strong> ${Math.round(indexedAmount).toLocaleString()} ₽<br>🔥 <strong>Чистый размер индексации (ст. 208 ГПК):</strong> +${Math.round(delta).toLocaleString()} ₽`;
+                reportText = `РАСЧЕТ ИНДЕКСАЦИИ:\nИсходная сумма: ${amount} руб.\nПериод: с ${startStr} по ${endStr}\nСумма прироста на базе ИПЦ Росстата: ${Math.round(delta)} руб.`;
+
+            } else if (type === 'zozpp') {
+                const base = parseFloat(document.getElementById('pen-base').value) || 0;
+                const days = parseInt(document.getElementById('pen-days').value) || 0;
+                let penalty = base * 0.03 * days;
+                if (penalty > base) penalty = base;
+
+                resultText = `💵 <strong>Законная неустойка (3% в день):</strong> ${Math.round(penalty).toLocaleString()} ₽<br><small>* Ограничено общей ценой услуги согласно ЗоЗПП</small>`;
+                reportText = `РАСЧЕТ НЕУСТОЙКИ ПО ЗоЗПП:\nБаза расчета: ${base} руб.\nДней просрочки: ${days}\nИтого законная неустойка: ${Math.round(penalty)} руб.`;
+
+            } else if (type === 'ddu') {
+                const base = parseFloat(document.getElementById('pen-base').value) || 0;
+                const days = parseInt(document.getElementById('pen-days').value) || 0;
+                const cbRate = parseFloat(document.getElementById('global-rate').value) || 16.0;
+                let penalty = base * days * ((cbRate / 100) / 300) * 2;
+
+                resultText = `🏢 <strong>Неустойка по ФЗ-214 (ДДУ x2):</strong> ${Math.round(penalty).toLocaleString()} ₽<br><small>Учтена ставка ЦБ ${cbRate}%</small>`;
+                reportText = `РАСЧЕТ НЕУСТОЙКИ ПО ДДУ (ФЗ-214):\nЦена объекта: ${base} руб.\nПериод просрочки: ${days} дн.\nСтавка ЦБ: ${cbRate}%\nСумма к взысканию с застройщика: ${Math.round(penalty)} руб.`;
+
+            } else if (type === 'alimony_debt') {
+                const months = parseInt(document.getElementById('ali-months').value) || 0;
+                const share = parseFloat(document.getElementById('ali-share').value) || 0.25;
+                const avgSalary = 85000;
+                let debt = avgSalary * share * months;
+
+                resultText = `👶 <strong>Долг по алиментам по СЗП РФ:</strong> ${Math.round(debt).toLocaleString()} ₽<br><small>Базовая СЗП по РФ принята за ${avgSalary} ₽</small>`;
+                reportText = `РАСЧЕТ ЗАДОЛЖЕННОСТИ ПО АЛИМЕНТАМ (ст. 113 СК РФ):\nПериод отсутствия работы у должника: ${months} мес.\nДоля взыскания: ${share}\nИтого задолженность: ${Math.round(debt)} руб.`;
+            }
+
+            document.getElementById('fin-result-text').innerHTML = resultText;
+            document.getElementById('fin-report-text').value = reportText;
+        }
+
+        function toggleIpFields() {
+            const ipType = document.querySelector('input[name="ip-type"]:checked').value;
+            document.getElementById('ip-prop-fields').style.display = ipType === 'property' ? 'block' : 'none';
+            calculateIpCalc();
+        }
+
+        function calculateIpCalc() {
+            const status = document.getElementById('global-status').value;
+            const ipType = document.querySelector('input[name="ip-type"]:checked').value;
+            const forceMajeure = document.getElementById('ip-force-majeure').checked;
+            const outBox = document.getElementById('ip-fee-output');
+
+            if (forceMajeure) {
+                outBox.innerHTML = `<span style="color:#10b981; font-weight:bold;">🔥 Исполнительский сбор: 0 ₽</span><br>Освобождение по ч. 6 ст. 112 ФЗ № 229.`;
+                return;
+            }
+            if (ipType === 'non-property') {
+                let fixFee = status === 'citizen' ? 10000 : 100000;
+                outBox.innerHTML = `Фиксированный сбор за неимущественное требование:<br><span style="font-size:20px; color:var(--res-text-highlight); font-weight:bold;">${fixFee.toLocaleString()} ₽</span>`;
+                return;
+            }
+
+            const debt = parseFloat(document.getElementById('ip-debt-sum').value) || 0;
+            const volPay = parseFloat(document.getElementById('ip-voluntary-pay').value) || 0;
+            let baseForFee = Math.max(0, debt - volPay);
+            
+            if (baseForFee === 0) {
+                outBox.innerHTML = `<span style="color:#10b981; font-weight:bold;">🎉 Исполнительский сбор: 0 ₽</span> (Добровольное гашение)`;
+                return;
+            }
+
+            let totalFee = Math.max(baseForFee * 0.11, status === 'citizen' ? 1000 : 10000);
+            outBox.innerHTML = `<b>База расчета:</b> ${baseForFee.toLocaleString()} ₽<br><span style="font-size: 20px; color: var(--res-text-highlight); font-weight:bold;">Сбор ФССП (11%): ${Math.round(totalFee).toLocaleString()} ₽</span>`;
+        }
+
+        function calculateDistribution() {
+            let incoming = parseFloat(document.getElementById('dist-incoming').value) || 0;
+            let q1 = parseFloat(document.getElementById('dist-q1').value) || 0;
+            let q2 = parseFloat(document.getElementById('dist-q2').value) || 0;
+            let q3 = parseFloat(document.getElementById('dist-q3').value) || 0;
+            let q4 = parseFloat(document.getElementById('dist-q4').value) || 0;
+
+            let res = [0, 0, 0, 0];
+            let queues = [q1, q2, q3, q4];
+
+            for (let i = 0; i < 4; i++) {
+                if (incoming >= queues[i]) {
+                    res[i] = queues[i];
+                    incoming -= queues[i];
+                } else {
+                    res[i] = incoming;
+                    incoming = 0;
+                }
+            }
+
+            document.getElementById('dist-res-q1').innerText = Math.round(res[0]).toLocaleString();
+            document.getElementById('dist-res-q2').innerText = Math.round(res[1]).toLocaleString();
+            document.getElementById('dist-res-q3').innerText = Math.round(res[2]).toLocaleString();
+            document.getElementById('dist-res-q4').innerText = Math.round(res[3]).toLocaleString();
+            document.getElementById('dist-res-rem').innerText = Math.round(incoming).toLocaleString();
+        }
+
+        function calculatePM() {
+            const basePM = parseFloat(document.getElementById('pm-region').value);
+            const cat = document.getElementById('pm-cat').value;
+            const dependents = parseInt(document.getElementById('pm-dep').value) || 0;
+
+            let currentPM = basePM;
+            if (cat === 'pens') currentPM = basePM * 0.86;
+
+            let secureAmount = currentPM + (dependents * basePM);
+            document.getElementById('pm-final-val').innerText = Math.round(secureAmount).toLocaleString();
+        }
+
+        function openAlimonyModal() {
+            const sum = document.getElementById('pm-final-val').innerText;
+            const txt = document.getElementById('pm-statement-text');
+            txt.value = `В РОСП ФССП России\nОт Должника: Юр. лица / Гражданина\n\nЗАЯВЛЕНИЕ\nВ соответствии со ст. 69 ФЗ № 229-ФЗ прошу сохранить ежемесячно доходы в размере ${sum} рублей, гарантирующем прожиточный минимум должника и лиц на его иждивении. Списание денежных средств со счета №________________ в пределах данной суммы прошу не производить.`;
+            openModal('fssp-statement-modal');
+        }
+
+        function evaluateImmunity() {
+            let checkedItems = [];
+            document.querySelectorAll('.imm-check:checked').forEach(c => checkedItems.push(c.value));
+            
+            const box = document.getElementById('imm-box');
+            const text = document.getElementById('imm-text');
+
+            if (checkedItems.length > 0) {
+                box.className = "result-box success";
+                text.innerHTML = `🛡 <strong>Иммунитет подтвержден!</strong> Выбранные объекты: ${checkedItems.join(', ')} защищены ст. 446 ГПК РФ и не могут быть изъяты приставами.`;
+            } else {
+                box.className = "result-box warning";
+                text.innerHTML = `Внимание! Не выбрано защищаемое имущество. Все активы должника находятся под угрозой изъятия в рамках ст. 69 ФЗ-229.`;
+            }
+        }
+
+        function toggleInterruptionField() {
+            document.getElementById('ip-interruption-container').style.display = document.getElementById('ip-has-interruption').checked ? 'block' : 'none';
+            calculateIpDates();
+        }
+
+        function calculateIpDates() {
+            const type = document.getElementById('ip-doc-type').value;
+            const startDateVal = document.getElementById('ip-doc-start-date').value;
+            const hasInterruption = document.getElementById('ip-has-interruption').checked;
+            const interruptDateVal = document.getElementById('ip-interruption-date').value;
+            const box = document.getElementById('ip-doc-status-box');
+            if (!startDateVal) return;
+
+            let pivotDate = new Date(hasInterruption && interruptDateVal ? interruptDateVal : startDateVal);
+            let deadline = new Date(pivotDate);
+            
+            if (type === 'kts') deadline.setMonth(pivotDate.getMonth() + 3);
+            else deadline.setFullYear(pivotDate.getFullYear() + 3);
+
+            let today = new Date();
+            today.setHours(0,0,0,0);
+
+            if (deadline >= today) {
+                box.className = "result-box success";
+                box.innerHTML = `✅ <strong>ДОКУМЕНТ ДЕЙСТВИТЕЛЕН.</strong><br>Срок взыскания истекает: <strong>${formatDate(deadline)}</strong>`;
+            } else {
+                box.className = "result-box warning";
+                box.innerHTML = `❌ <strong>СРОК ПРОПУЩЕН.</strong><br>Документ утратил силу: <strong>${formatDate(deadline)}</strong>`;
+            }
+        }
+
+        function calculateSID() {
+            const years = parseFloat(document.getElementById('sid-type').value);
+            const startVal = document.getElementById('sid-start').value;
+            const isPaused = document.getElementById('sid-pause').checked;
+            const isBroken = document.getElementById('sid-break').checked;
+            const resBox = document.getElementById('sid-result-box');
+            const resText = document.getElementById('sid-result-text');
+
+            if (!startVal) return;
+            let targetDate = new Date(startVal);
+            
+            if (years < 1) targetDate.setMonth(targetDate.getMonth() + 1);
+            else targetDate.setFullYear(targetDate.getFullYear() + Math.floor(years));
+
+            if (isPaused) targetDate.setMonth(targetDate.getMonth() + 6);
+            if (isBroken) {
+                resBox.className = "result-box warning";
+                resText.innerHTML = `⚡ <strong>Срок обнулен!</strong> Признание долга (ст. 203 ГК РФ) прерывает СИД. Течение срока начинается заново с даты признания.`;
+                return;
+            }
+
+            let today = new Date();
+            if (targetDate > today) {
+                resBox.className = "result-box success";
+                resText.innerHTML = `⚖ <strong>Исковая давность не истекла.</strong><br>Дедлайн подачи иска в суд: <strong>${formatDate(targetDate)}</strong>`;
+            } else {
+                resBox.className = "result-box warning";
+                resText.innerHTML = `🚨 <strong>СРОК ИСКОВОЙ ДАВНОСТИ ИСТЕК (${formatDate(targetDate)}).</strong><br>Ответчик заявит о СИД — дело будет проиграно в суде!`;
+            }
+        }
+
+        function calculateBankruptcy() {
+            const type = document.getElementById('bank-type').value;
+            const debt = parseFloat(document.getElementById('bank-debt').value) || 0;
+            const months = parseInt(document.getElementById('bank-months').value) || 0;
+            const box = document.getElementById('bank-verdict-box');
+            const text = document.getElementById('bank-verdict-text');
+
+            let threshold = 500000;
+
+            if (debt >= threshold && months >= 3) {
+                box.className = "result-box warning";
+                text.innerHTML = `⚖ <strong>ВЕРДИКТ: Есть законные признаки банкротства!</strong><br>Сумма долга превышает порог в ${threshold.toLocaleString()} ₽, а просрочка составляет ${months} мес. (более 3 месяцев по ФЗ № 127).`;
+            } else {
+                box.className = "result-box success";
+                text.innerHTML = `🛡 <strong>ВЕРДИКТ: Признаков банкротства не обнаружено.</strong><br>Критерии ФЗ № 127 не достигнуты. Подача заявления не обоснована.`;
+            }
+        }
+
+        function calculateGp() {
+            const mainDebt = parseFloat(document.getElementById('main-debt').value) || 0;
+            const isPrikaz = document.getElementsByName('prod-type')[1].checked;
+            const privilege = document.getElementById('gp-privilege').value;
+            const plaintiffs = parseInt(document.getElementById('plaintiffs-count').value) || 1;
+            
+            let penalty395 = 0;
+            if (document.getElementById('include-395').checked) {
+                const days = parseInt(document.getElementById('days-395').value) || 0;
+                const rate = parseFloat(document.getElementById('rate-395').value) || 0;
+                penalty395 = Math.round((mainDebt * days * (rate / 100)) / 365 * 100) / 100;
+                document.getElementById('res-395-row').style.display = 'flex';
+                document.getElementById('res-395-val').innerText = penalty395.toLocaleString('ru-RU');
+            } else {
+                document.getElementById('res-395-row').style.display = 'none';
+            }
+
+            let initialPrice = mainDebt + penalty395;
+            document.getElementById('res-total-price').innerText = initialPrice.toLocaleString('ru-RU');
+
+            let jurisdiction = "РАЙОННЫЙ СУД";
+            let basis = "Имущественный спор свыше 100 000 руб. (ст. 24 ГПК РФ)";
+            
+            if (isPrikaz) {
+                jurisdiction = "МИРОВОЙ СУДЬЯ";
+                basis = "Выдача судебного приказа (абз. 1 ч. 1 ст. 23 ГПК РФ)";
+            } else {
+                const hasNonProp = document.getElementById('add-non-prop').checked;
+                const nonPropType = document.getElementById('non-prop-type').value;
+                if (hasNonProp && nonPropType === "5000" && initialPrice === 0) {
+                    jurisdiction = "МИРОВОЙ СУДЬЯ";
+                    basis = "Расторжение брака без спора о детях (абз. 2 ч. 1 ст. 23 ГПК РФ)";
+                } else if (hasNonProp && (nonPropType === "3000" || nonPropType === "20000")) {
+                    jurisdiction = "РАЙОННЫЙ СУД";
+                    basis = "Наличие неимущественных требований (ст. 24 ГПК РФ)";
+                } else if (initialPrice <= 100000) {
+                    jurisdiction = "МИРОВОЙ СУДЬЯ";
+                    basis = "Имущественный спор до 100 000 руб. включительно (абз. 4 ч. 1 ст. 23 ГПК РФ)";
+                }
+            }
+            document.getElementById('res-jurisdiction').innerText = jurisdiction;
+            document.getElementById('res-jurisdiction-basis').innerText = basis;
+
+            function getBaseGp(val) {
+                if (val <= 100000) return 4000;
+                if (val <= 300000) return 4000 + (val - 100000) * 0.03;
+                if (val <= 500000) return 10000 + (val - 300000) * 0.025;
+                if (val <= 1000000) return 15000 + (val - 500000) * 0.02;
+                if (val <= 3000000) return 25000 + (val - 1000000) * 0.01;
+                if (val <= 8000000) return 45000 + (val - 3000000) * 0.007;
+                if (val <= 24000000) return 80000 + (val - 8000000) * 0.0035;
+                if (val <= 50000000) return 136000 + (val - 24000000) * 0.003;
+                if (val <= 100000000) return 214000 + (val - 50000000) * 0.002;
+                let duty = 314000 + (val - 100000000) * 0.0015;
+                return duty > 900000 ? 900000 : duty;
+            }
+
+            function getDutyWithPrivilege(price) {
+                let duty = getBaseGp(price);
+                if (isPrikaz) duty *= 0.5;
+                if (privilege === 'labor' || privilege === 'veteran') return 0;
+                if (privilege === 'invalid' || privilege === 'pensioner') {
+                    if (price <= 1000000) return 0;
+                    duty = getBaseGp(price) - getBaseGp(1000000);
+                    if (isPrikaz) duty *= 0.5;
+                    if (privilege === 'invalid') duty *= 0.5;
+                }
+                return duty;
+            }
+
+            let pureDuty = getDutyWithPrivilege(initialPrice);
+            let nonPropDuty = 0;
+            if (document.getElementById('add-non-prop').checked && !isPrikaz) {
+                const rate = parseFloat(document.getElementById('non-prop-type').value) || 0;
+                const count = parseInt(document.getElementById('non-prop-count').value) || 1;
+                if (privilege !== 'labor' && privilege !== 'veteran') nonPropDuty = rate * count;
+            }
+
+            let finalGp = Math.round(pureDuty + nonPropDuty);
+            document.getElementById('res-final-gp').innerText = finalGp.toLocaleString('ru-RU');
+
+            const modType = document.querySelector('input[name="mod-type"]:checked') ? document.querySelector('input[name="mod-type"]:checked').value : 'none';
+            document.getElementById('res-refund-row').style.display = 'none';
+            
+            let reportedGp = finalGp;
+            if (modType !== 'none' && !isPrikaz) {
+                const modAmount = parseFloat(document.getElementById('mod-amount').value) || 0;
+                let modPureDuty = getDutyWithPrivilege(modAmount);
+                let modFinalGp = Math.round(modPureDuty + nonPropDuty);
+                reportedGp = modFinalGp;
+                
+                if (modType === 'up') {
+                    document.getElementById('res-final-gp').innerText = `${modFinalGp.toLocaleString('ru-RU')} (с учетом увелич.)`;
+                } else if (modType === 'down') {
+                    let refund = finalGp - modFinalGp;
+                    if (refund < 0) refund = 0;
+                    document.getElementById('res-final-gp').innerText = modFinalGp.toLocaleString('ru-RU');
+                    document.getElementById('res-refund-row').style.display = 'flex';
+                    document.getElementById('res-refund-val').innerText = refund.toLocaleString('ru-RU');
+                }
+            }
+
+            if (plaintiffs > 1) {
+                document.getElementById('res-share-row').style.display = 'flex';
+                document.getElementById('res-share-val').innerText = Math.round(reportedGp / plaintiffs).toLocaleString('ru-RU');
+            } else {
+                document.getElementById('res-share-row').style.display = 'none';
+            }
+
+            let report = `=== СУДЕБНЫЙ ПОМОЩНИК: ОТЧЕТ ПО ГОСПОШЛИНЕ ===\nЦена иска: ${initialPrice.toLocaleString('ru-RU')} руб.\nГоспошлина: ${reportedGp.toLocaleString('ru-RU')} руб.`;
+            document.getElementById('gp-report-text').value = report;
+        }
+
+        function toggleGpElements() {
+            const isPrikaz = document.getElementsByName('prod-type')[1].checked;
+            document.getElementById('non-prop-wrapper').style.display = isPrikaz ? 'none' : 'block';
+            document.getElementById('modification-wrapper').style.display = isPrikaz ? 'none' : 'block';
+            calculateGp();
+        }
+
+        function toggleNonPropFields() {
+            document.getElementById('non-prop-subfields').style.display = document.getElementById('add-non-prop').checked ? 'block' : 'none';
+            calculateGp();
+        }
+
+        function toggle395Fields() {
+            document.getElementById('fields-395').style.display = document.getElementById('include-395').checked ? 'grid' : 'none';
+            calculateGp();
+        }
+
+        function toggleModFields() {
+            const modType = document.querySelector('input[name="mod-type"]:checked').value;
+            document.getElementById('mod-input-container').style.display = modType === 'none' ? 'none' : 'block';
+            calculateGp();
+        }
+
+        function generateWordHeader() {
+            const court = document.getElementById('w-court').value;
+            const ist = document.getElementById('w-ist').value;
+            const otv = document.getElementById('w-otv').value;
+            const price = document.getElementById('res-total-price').innerText;
+            const gp = document.getElementById('res-final-gp').innerText;
+            const txt = document.getElementById('word-header-output');
+
+            txt.value = `В ${court}\nИстец: ${ist}\nОтветчик: ${otv}\nЦена иска: ${price} руб.\nГоспошлина: ${gp} руб.`;
+            txt.style.display = 'block';
+        }
+
+        function copyToClipboard(id) {
+            navigator.clipboard.writeText(document.getElementById(id).value);
+            alert("Скопировано!");
+        }
+    </script>
+</body>
+</html>
