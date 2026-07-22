@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Добро пожаловать | Судебный & Исполнительный Помощник PRO</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* === БАЗОВЫЕ ПЕРЕМЕННЫЕ === */
+        :root {
+            --bg-main: #0b0f19;
+            --bg-panel: #131b2e;
+            --bg-card: #1e2942;
+            --bg-result: linear-gradient(135deg, #112240 0%, #1a3a5c 100%);
+            --text-main: #94a3b8;
+            --text-light: #f8fafc;
+            --text-muted: #64748b;
+            --accent-red: #f43f5e;
+            --accent-red-hover: #e11d48;
+            --accent-blue: #3b82f6;
+            --border-color: rgba(255, 255, 255, 0.06);
+            --input-bg: #0f172a;
+            --radius: 12px;
+            --shadow-md: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        body.light-theme {
+            --bg-main: #f1f5f9;
+            --bg-panel: #ffffff;
+            --bg-card: #f8fafc;
+            --bg-result: linear-gradient(135deg, #e0e7ff 0%, #f1f5f9 100%);
+            --text-main: #475569;
+            --text-light: #0f172a;
+            --text-muted: #64748b;
+            --border-color: rgba(0, 0, 0, 0.1);
+            --input-bg: #f8fafc;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            transition: background-color 0.3s ease, color 0.3s ease;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* === ШАПКА === */
+        header {
+            background: var(--bg-panel);
+            opacity: 0.95;
+            backdrop-filter: blur(12px);
+            padding: 24px;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-container {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo-area h1 {
+            color: var(--text-light);
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+        }
+
+        .theme-toggle-btn {
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-light);
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: var(--transition);
+        }
+
+        .theme-toggle-btn:hover {
+            background: var(--bg-card);
+            transform: translateY(-1px);
+        }
+
+        /* === КНОПКИ === */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background-color: var(--accent-red);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 14px 28px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: var(--transition);
+        }
+
+        .btn:hover {
+            background-color: var(--accent-red-hover);
+            box-shadow: 0 4px 12px rgba(225, 29, 72, 0.4);
+        }
+
+        /* === ОСНОВНАЯ СЕТКА ЛЕНДИНГА === */
+        .landing-container {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+            flex-grow: 1;
+            width: 100%;
+        }
+
+        /* Hero блок (сплит-скрин) */
+        .hero-section {
+            background-color: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-md);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        @media (min-width: 992px) {
+            .hero-section {
+                flex-direction: row;
+                min-height: 500px;
+            }
+        }
+
+        .hero-content {
+            flex: 1;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .hero-kicker {
+            color: var(--accent-red);
+            font-weight: 700;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+        }
+
+        .hero-content h2 {
+            font-size: clamp(32px, 4vw, 48px);
+            color: var(--text-light);
+            line-height: 1.15;
+            font-weight: 700;
+            margin-bottom: 20px;
+            letter-spacing: -0.02em;
+        }
+
+        .hero-content p {
+            font-size: 16px;
+            color: var(--text-muted);
+            margin-bottom: 30px;
+            max-width: 90%;
+        }
+
+        .hero-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 32px;
+        }
+
+        .hero-tag {
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        /* Правая часть с картинкой */
+        .hero-visual {
+            flex: 1;
+            background: var(--bg-result);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            position: relative;
+        }
+
+        .hero-visual img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: var(--shadow-md);
+        }
+
+        /* Плейсхолдер (пока нет картинки) */
+        .image-placeholder {
+            width: 100%;
+            height: 100%;
+            min-height: 300px;
+            border: 2px dashed rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: var(--text-main);
+            padding: 20px;
+        }
+
+        body.light-theme .image-placeholder {
+            border-color: rgba(0, 0, 0, 0.15);
+        }
+
+        /* Блок с информацией о приложении */
+        .info-section {
+            display: flex;
+            flex-direction: column;
+            gap: 32px;
+        }
+
+        .workspace-panel {
+            background-color: var(--bg-panel);
+            border-radius: var(--radius);
+            padding: 32px;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-md);
+        }
+
+        .panel-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-light);
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .workspace-panel p {
+            margin-bottom: 16px;
+            font-size: 15px;
+            line-height: 1.7;
+        }
+
+        .workspace-panel ul {
+            padding-left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .workspace-panel li {
+            font-size: 15px;
+            line-height: 1.6;
+        }
+
+        .workspace-panel strong {
+            color: var(--text-light);
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="header-container">
+            <div class="logo-area">
+                <h1>⚖️ Судебный & Исполнительный Помощник PRO</h1>
+            </div>
+            <button id="theme-toggle" class="theme-toggle-btn" onclick="toggleTheme()">☀️ Светлая тема</button>
+        </div>
+    </header>
+
+    <main class="landing-container">
+        
+        <!-- ГЛАВНЫЙ БЛОК (Сплит-дизайн) -->
+        <section class="hero-section">
+            <div class="hero-content">
+                <div class="hero-kicker">Инструмент автоматизации</div>
+                <h2>Ваш личный ассистент в мире юриспруденции</h2>
+                <p>Судебный & Исполнительный Помощник PRO — это удобный аналитический сервис для точного расчета задолженностей, контроля процессуальных сроков и защиты прав должника.</p>
+                
+                <div class="hero-tags">
+                    <span class="hero-tag">⚖️ ГПК / АПК / КАС</span>
+                    <span class="hero-tag">💰 Ст. 395 ГК РФ</span>
+                    <span class="hero-tag">🛡 ФЗ № 229</span>
+                    <span class="hero-tag">📄 Банкротство</span>
+                </div>
+
+                <div>
+                    <!-- Замени 'urcalc_gemini_2.html' на актуальное название файла твоего калькулятора -->
+                    <a href="urcalc_gemini_2.html" class="btn">Запустить приложение</a>
+                </div>
+            </div>
+
+            <div class="hero-visual">
+                <!-- ВСТАВЬ СВОЕ ИЗОБРАЖЕНИЕ СЮДА -->
+                <!-- Пример: <img src="{C4575865-D6F4-4728-8818-49850EC960EC}.jpg" alt="Интерфейс программы"> -->
+                
+                <div class="image-placeholder">
+                    <span style="font-size: 40px; margin-bottom: 12px;">📱💻</span>
+                    <span>Вставьте сюда изображение<br><b>{C4575865-D6F4-4728-8818-49850EC960EC}.jpg</b><br>или мокапы интерфейса программы</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- БЛОК С ИНФОРМАЦИЕЙ -->
+        <section class="info-section">
+            
+            <!-- О приложении -->
+            <div class="workspace-panel">
+                <div class="panel-title">⚙️ Что умеет Помощник PRO?</div>
+                <p>Инструмент спроектирован для мгновенного решения рутинных задач, с которыми ежедневно сталкиваются юристы:</p>
+                <ul>
+                    <li><strong>Умные калькуляторы:</strong> Мгновенный расчет госпошлин с учетом льгот, процентов по ст. 395 ГК РФ, неустоек (по ЗоЗПП и ДДУ) и индексации присужденных средств.</li>
+                    <li><strong>Процессуальные сроки:</strong> Безошибочное определение дедлайнов (ГПК, АПК, КАС) с автоматическим учетом всех государственных праздников и выходных дней.</li>
+                    <li><strong>Исполнительное производство:</strong> Расчет исполнительского сбора, автоматическое распределение взысканных средств по очередям, генерация заявлений в ФССП на сохранение ПМ.</li>
+                    <li><strong>Аналитика и риски:</strong> Проверка исковой давности (СИД), интерактивный чеклист имущественного иммунитета (ст. 446 ГПК) и первичный анализ признаков банкротства.</li>
+                </ul>
+            </div>
+
+        </section>
+
+    </main>
+
+    <script>
+        // Скрипт для переключения тем (Светлая/Темная)
+        function toggleTheme() {
+            document.body.classList.toggle('light-theme');
+            const isLight = document.body.classList.contains('light-theme');
+            localStorage.setItem('theme', isLight ? 'light' : 'dark');
+            document.getElementById('theme-toggle').innerText = isLight ? '🌙 Темная тема' : '☀️ Светлая тема';
+        }
+
+        // Проверка сохраненной темы при загрузке
+        window.addEventListener('DOMContentLoaded', () => {
+            if (localStorage.getItem('theme') === 'light') {
+                document.body.classList.add('light-theme');
+                document.getElementById('theme-toggle').innerText = '🌙 Темная тема';
+            }
+        });
+    </script>
+</body>
+</html>
