@@ -1,11 +1,15 @@
 import os
 import hmac
 import hashlib
+import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from supabase import create_client, Client
+
+from bot import bot, dp  # Импортируем бота из bot.py
 
 # Загружаем переменные окружения из .env файла
 load_dotenv()
@@ -20,8 +24,28 @@ if not all([SUPABASE_URL, SUPABASE_KEY, TOME_SECRET_KEY]):
 # Инициализация Supabase клиента (используем service_role ключ)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Инициализация приложения FastAPI
-app = FastAPI(title="Telegram WebApp Backend API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Жизненный цикл FastAPI. Запускает бота при старте сервера и останавливает при выключении.
+    """
+    print("🚀 Запуск Telegram-бота в фоне...")
+    # Удаляем вебхуки и пропускаем старые апдейты
+    await bot.delete_webhook(drop_pending_updates=True)
+    # Запускаем поллинг как фоновую задачу
+    polling_task = asyncio.create_task(dp.start_polling(bot))
+    
+    yield  # В этот момент FastAPI обрабатывает запросы
+    
+    print("🛑 Остановка Telegram-бота...")
+    polling_task.cancel()
+    try:
+        await polling_task
+    except asyncio.CancelledError:
+        pass
+
+# Инициализация приложения FastAPI с нашим lifespan
+app = FastAPI(title="Telegram WebApp Backend API", lifespan=lifespan)
 
 # Настройка CORS для этапа разработки
 app.add_middleware(
