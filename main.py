@@ -1,28 +1,116 @@
 import os
 import hmac
 import hashlib
+import json
+import urllib.parse
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
-from fastapi import FastAPI, HTTPException, Request, Header
-from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+
+# 1. Загружаем переменные окружения на самом верху до импорта bot.py
+load_dotenv(override=True)
+
+from fastapi import FastAPI, HTTPException, Request, Header
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
 
-from bot import bot, dp  # Импортируем бота из bot.py
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
-# Загружаем переменные окружения из .env файла
-load_dotenv()
+from bot import bot, dp  # Импортируем бота из bot.py
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 TOME_SECRET_KEY = os.getenv("TOME_SECRET_KEY")
+PAYMASTER_PROVIDER_TOKEN = os.getenv("PAYMASTER_PROVIDER_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-if not all([SUPABASE_URL, SUPABASE_KEY, TOME_SECRET_KEY]):
+if not all([SUPABASE_URL, SUPABASE_KEY, TOME_SECRET_KEY, PAYMASTER_PROVIDER_TOKEN, BOT_TOKEN]):
     raise ValueError("Не все обязательные переменные окружения заданы. Проверьте ваш .env файл.")
 
-# Инициализация Supabase клиента (используем service_role ключ)
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def get_supabase() -> Client:
+    """
+    Динамически возвращает клиент Supabase на основе актуальных переменных окружения.
+    """
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    if not url or not key:
+        raise ValueError("SUPABASE_URL или SUPABASE_KEY не заданы в .env")
+    return create_client(url, key)
+
+
+def verify_telegram_init_data(init_data: str) -> dict | None:
+    """
+    Проверяет подлинность Telegram WebApp initData через HMAC-SHA256 и защиту от replay-атак (auth_date).
+    
+    1. Извлекает и отделяет параметр hash.
+    2. Сортирует оставшиеся параметры по алфавиту и собирает строку проверки (data_check_string).
+    3. Генерирует секретный ключ: hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest().
+    4. Вычисляет HMAC-хэш и сравнивает его с полученным hash через hmac.compare_digest.
+    5. Проверяет auth_date на давность (не более 86400 секунд / 24 часов).
+    6. В случае успеха парсит JSON из поля user и возвращает словарь с проверенными данными.
+    """
+    if not init_data or not BOT_TOKEN:
+        return None
+    try:
+        parsed_data = dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
+        received_hash = parsed_data.pop("hash", None)
+        if not received_hash:
+            return None
+
+        # Сортировка оставшихся параметров по алфавиту в формате key=value через перевод строки \n
+        data_check_string = "\n".join(
+            f"{k}={v}" for k, v in sorted(parsed_data.items(), key=lambda x: x[0])
+        )
+
+        # Вычисление секретного ключа от BOT_TOKEN
+        secret_key = hmac.new(
+            b"WebAppData",
+            BOT_TOKEN.encode("utf-8"),
+            hashlib.sha256
+        ).digest()
+
+        # Вычисление HMAC-SHA256 хэша
+        calculated_hash = hmac.new(
+            secret_key,
+            data_check_string.encode("utf-8"),
+            hashlib.sha256
+        ).hexdigest()
+
+        # Безопасное сравнение хэшей для защиты от timing attacks
+        if not hmac.compare_digest(calculated_hash, received_hash):
+            return None
+
+        # Защита от Replay-атаки: проверка времени создания auth_date (максимум 24 часа / 86400 сек)
+        auth_date_raw = parsed_data.get("auth_date")
+        if not auth_date_raw:
+            return None
+
+        try:
+            auth_date = int(auth_date_raw)
+        except (ValueError, TypeError):
+            return None
+
+        current_timestamp = int(datetime.now(timezone.utc).timestamp())
+        if current_timestamp - auth_date > 86400 or auth_date > current_timestamp + 300:
+            return None
+
+        # Извлечение и парсинг данных пользователя
+        if "user" in parsed_data:
+            user_raw = parsed_data["user"]
+            if isinstance(user_raw, str):
+                return json.loads(user_raw)
+            return user_raw
+
+        return parsed_data
+    except Exception as e:
+        print(f"Ошибка валидации Telegram initData: {e}")
+        return None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,55 +132,95 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
 
-# Инициализация приложения FastAPI с нашим lifespan
-app = FastAPI(title="Telegram WebApp Backend API", lifespan=lifespan)
 
-# Настройка CORS для этапа разработки
+# Инициализация Rate Limiter (SlowAPI) по IP-адресу
+limiter = Limiter(key_func=get_remote_address)
+
+# Инициализация приложения FastAPI с lifespan
+app = FastAPI(title="Telegram WebApp Backend API", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Настройка CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Разрешаем запросы с любых доменов
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-@app.get("/api/check-subscription/{telegram_id}")
-async def check_subscription(telegram_id: int):
+@app.get("/api/check-subscription")
+@limiter.limit("30/minute")
+async def check_subscription(
+    request: Request,
+    x_telegram_init_data: str = Header(None, alias="X-Telegram-Init-Data")
+):
     """
-    Проверяет статус подписки пользователя по его telegram_id.
+    Безопасная проверка статуса подписки пользователя.
+    Принимает заголовок X-Telegram-Init-Data, валидирует подпись и извлекает проверенный telegram_id.
+    Для новых пользователей автоматически активирует 5-дневный триал-период.
     """
+    if not x_telegram_init_data:
+        raise HTTPException(status_code=401, detail="Отсутствует заголовок X-Telegram-Init-Data")
+
+    user_data = verify_telegram_init_data(x_telegram_init_data)
+    if not user_data or "id" not in user_data:
+        raise HTTPException(status_code=401, detail="Недействительная подпись Telegram initData")
+
+    telegram_id = user_data["id"]
+
     try:
-        response = supabase.table("subscriptions").select("subscription_until").eq("telegram_id", telegram_id).execute()
+        supabase = get_supabase()
+        response = supabase.table("subscriptions").select("subscription_until, trial_used").eq("telegram_id", telegram_id).execute()
         data = response.data
+        now_utc = datetime.now(timezone.utc)
         
-        # Если пользователь не найден в БД
+        # Если записи о пользователе нет в БД (первый вход)
         if not data:
-            return {"active": False, "expires_at": None}
+            trial_until = now_utc + timedelta(days=5)
+            supabase.table("subscriptions").insert({
+                "telegram_id": telegram_id,
+                "subscription_until": trial_until.isoformat(),
+                "trial_used": True
+            }).execute()
+            return {
+                "active": True,
+                "is_trial": True,
+                "expires_at": trial_until.strftime("%Y-%m-%d %H:%M")
+            }
             
-        sub_until_str = data[0].get("subscription_until")
+        record = data[0]
+        sub_until_str = record.get("subscription_until")
+        trial_used = bool(record.get("trial_used", False))
         
         # Если поле subscription_until пустое
         if not sub_until_str:
-            return {"active": False, "expires_at": None}
+            return {"active": False, "is_trial": False, "expires_at": None}
             
         # Парсим дату (Supabase возвращает ISO строку)
         # Заменяем 'Z' на '+00:00' для корректной работы fromisoformat
         sub_until = datetime.fromisoformat(sub_until_str.replace("Z", "+00:00"))
-        now_utc = datetime.now(timezone.utc)
         
         # Сравниваем дату окончания с текущим временем
-        is_active = sub_until > now_utc
-        
-        return {
-            "active": is_active,
-            "expires_at": sub_until.strftime("%Y-%m-%d %H:%M")
-        }
+        if sub_until > now_utc:
+            return {
+                "active": True,
+                "is_trial": trial_used,
+                "expires_at": sub_until.strftime("%Y-%m-%d %H:%M")
+            }
+        else:
+            return {
+                "active": False,
+                "is_trial": False,
+                "expires_at": sub_until.strftime("%Y-%m-%d %H:%M")
+            }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/webhook/tome")
+@limiter.limit("30/minute")
 async def tome_webhook(request: Request, x_tome_signature: str = Header(None)):
     """
     Вебхук для получения оповещений об успешной оплате от Tome.ru.
@@ -100,9 +228,6 @@ async def tome_webhook(request: Request, x_tome_signature: str = Header(None)):
     raw_body = await request.body()
     
     # 1. Безопасная проверка сигнатуры / хэша
-    # Предполагается, что Tome.ru отправляет HMAC-SHA256 подпись тела запроса 
-    # в заголовке X-Tome-Signature. (Вам нужно будет свериться с их документацией
-    # и при необходимости адаптировать этот блок).
     if not x_tome_signature:
         raise HTTPException(status_code=400, detail="Missing signature header")
         
@@ -119,18 +244,29 @@ async def tome_webhook(request: Request, x_tome_signature: str = Header(None)):
     # 2. Извлечение данных из тела запроса
     try:
         payload = await request.json()
-        telegram_id = payload.get("telegram_id")
+        raw_telegram_id = payload.get("telegram_id")
         days = payload.get("days", 30)  # Период подписки в днях
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON body")
         
-    if not telegram_id:
-         raise HTTPException(status_code=400, detail="telegram_id is required in payload")
+    if raw_telegram_id is None:
+        raise HTTPException(status_code=400, detail="telegram_id is required in payload")
+
+    try:
+        telegram_id = int(raw_telegram_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid telegram_id: must be an integer")
+
+    try:
+        days = int(days)
+    except (ValueError, TypeError):
+        days = 30
 
     now_utc = datetime.now(timezone.utc)
     added_timedelta = timedelta(days=days)
 
     try:
+        supabase = get_supabase()
         # Ищем пользователя в БД
         response = supabase.table("subscriptions").select("subscription_until").eq("telegram_id", telegram_id).execute()
         data = response.data
@@ -152,7 +288,8 @@ async def tome_webhook(request: Request, x_tome_signature: str = Header(None)):
                 
             # Обновляем существующую запись
             supabase.table("subscriptions").update({
-                "subscription_until": new_sub_until.isoformat()
+                "subscription_until": new_sub_until.isoformat(),
+                "trial_used": True
             }).eq("telegram_id", telegram_id).execute()
             
         else:
@@ -160,7 +297,8 @@ async def tome_webhook(request: Request, x_tome_signature: str = Header(None)):
             new_sub_until = now_utc + added_timedelta
             supabase.table("subscriptions").insert({
                 "telegram_id": telegram_id,
-                "subscription_until": new_sub_until.isoformat()
+                "subscription_until": new_sub_until.isoformat(),
+                "trial_used": True
             }).execute()
             
         # Возвращаем статус 200 OK как ожидает большинство платежных систем
@@ -168,3 +306,9 @@ async def tome_webhook(request: Request, x_tome_signature: str = Header(None)):
         
     except Exception as e:
          raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/")
+@app.get("/index.html")
+async def serve_index():
+    return FileResponse(os.path.join(os.path.dirname(__file__), "index.html"))

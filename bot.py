@@ -1,33 +1,74 @@
 import os
+import logging
 import asyncio
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import CommandStart
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
-# Загружаем переменные окружения
-load_dotenv()
+# 1. Загружаем переменные окружения в самом верху файла с переопределением
+load_dotenv(override=True)
+
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import CommandStart, Command, CommandObject
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, LabeledPrice
+from supabase import create_client, Client
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+PAYMASTER_TOKEN = os.getenv("PAYMASTER_PROVIDER_TOKEN")
 
 if not BOT_TOKEN:
     raise ValueError("Не задан BOT_TOKEN в файле .env")
+
+if not PAYMASTER_TOKEN:
+    raise ValueError("Не задан PAYMASTER_PROVIDER_TOKEN в файле .env")
+
+
+def get_supabase() -> Client:
+    """
+    Динамически создает и возвращает клиент Supabase, 
+    используя актуальные переменные окружения из .env при каждом вызове.
+    """
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    if not url or not key:
+        return None
+    return create_client(url, key)
+
 
 # Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Замените эти ссылки на ваши реальные
-WEBAPP_URL = "здесь должен быть URL вашего WebApp"
-PAYMENT_URL = "здесь должен быть URL оплаты Tome.ru"
+# Чтение URL из переменных окружения
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://62-217-177-189.sslip.io/index.html")
+PAYMENT_URL = os.getenv("PAYMENT_URL", "https://t.me/JuristCalc_bot?start=buy")
+
+
+async def send_subscription_invoice(chat_id: int):
+    """
+    Отправляет Telegram-инвойс для оплаты подписки через Paymaster.
+    """
+    await bot.send_invoice(
+        chat_id=chat_id,
+        title="Подписка на Судебный Помощник PRO",
+        description="Полный доступ ко всем калькуляторам и функциям на 30 дней",
+        payload="sub_30_days",
+        provider_token=PAYMASTER_TOKEN,
+        currency="RUB",
+        prices=[LabeledPrice(label="Подписка на 30 дней", amount=29900)],
+        start_parameter="sub_30_days"
+    )
+
 
 @dp.message(CommandStart())
-async def command_start_handler(message: types.Message) -> None:
+async def command_start_handler(message: types.Message, command: CommandObject) -> None:
     """
     Обработчик команды /start
-    Отправляет приветственное сообщение и клавиатуру с кнопками WebApp и оплаты.
+    Если передан диплинк 'buy' (/start buy), автоматический запуск инвойса на оплату.
     """
-    # Создаем инлайн клавиатуру
+    if command.args == "buy":
+        await send_subscription_invoice(message.chat.id)
+        return
+
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -39,7 +80,7 @@ async def command_start_handler(message: types.Message) -> None:
             [
                 InlineKeyboardButton(
                     text="💳 Оплатить подписку", 
-                    url=PAYMENT_URL
+                    callback_data="buy_subscription"
                 )
             ]
         ]
@@ -48,11 +89,88 @@ async def command_start_handler(message: types.Message) -> None:
     welcome_text = (
         f"Привет, {message.from_user.first_name}! 👋\n\n"
         "Добро пожаловать в Судебный & Исполнительный Помощник PRO.\n\n"
+        "🎁 Вам начислен бесплатный пробный доступ на 5 дней ко всем функциям калькулятора!\n\n"
         "Для работы с калькулятором нажми кнопку ниже. Если у тебя еще нет подписки, "
-        "ты можешь оформить её, нажав на соответствующую кнопку."
+        "ты можешь оформить её, нажав на кнопку «💳 Оплатить подписку» или отправив команду /buy."
     )
 
     await message.answer(welcome_text, reply_markup=keyboard)
+
+
+@dp.message(Command("buy"))
+async def command_buy_handler(message: types.Message) -> None:
+    """
+    Обработчик команды /buy для вызова инвойса оплаты.
+    """
+    await send_subscription_invoice(message.chat.id)
+
+
+@dp.callback_query(F.data == "buy_subscription")
+async def process_buy_callback(callback_query: types.CallbackQuery) -> None:
+    """
+    Обработчик нажатия на инлайн-кнопку «💳 Оплатить подписку».
+    """
+    await callback_query.answer()
+    await send_subscription_invoice(callback_query.message.chat.id)
+
+
+@dp.pre_checkout_query()
+async def pre_checkout_handler(pre_checkout_query: types.PreCheckoutQuery) -> None:
+    """
+    Подтверждение готовности принять платеж от пользователя.
+    """
+    await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
+
+
+@dp.message(F.successful_payment)
+async def successful_payment_handler(message: types.Message) -> None:
+    """
+    Обработчик успешной оплаты подписки.
+    Обновляет или создает запись о подписке в Supabase на +30 дней.
+    Сохраняет флаг trial_used: True.
+    """
+    telegram_id = message.from_user.id
+    now_utc = datetime.now(timezone.utc)
+    added_timedelta = timedelta(days=30)
+    
+    supabase = get_supabase()
+    if not supabase:
+        logging.error("Supabase клиент не инициализирован (отсутствуют SUPABASE_URL или SUPABASE_KEY).")
+        await message.answer("⚠️ Оплата прошла, но произошла ошибка при активации подписки. Обратитесь в поддержку.")
+        return
+
+    try:
+        response = supabase.table("subscriptions").select("subscription_until, trial_used").eq("telegram_id", telegram_id).execute()
+        data = response.data
+
+        if data and data[0].get("subscription_until"):
+            sub_until_str = data[0].get("subscription_until")
+            current_sub_until = datetime.fromisoformat(sub_until_str.replace("Z", "+00:00"))
+            if current_sub_until > now_utc:
+                new_sub_until = current_sub_until + added_timedelta
+            else:
+                new_sub_until = now_utc + added_timedelta
+        else:
+            new_sub_until = now_utc + added_timedelta
+
+        sub_until_iso = new_sub_until.isoformat()
+
+        if data:
+            supabase.table("subscriptions").update({
+                "subscription_until": sub_until_iso,
+                "trial_used": True
+            }).eq("telegram_id", telegram_id).execute()
+        else:
+            supabase.table("subscriptions").insert({
+                "telegram_id": telegram_id,
+                "subscription_until": sub_until_iso,
+                "trial_used": True
+            }).execute()
+
+        await message.answer("🎉 Оплата прошла успешно! Все вкладки калькулятора разблокированы.")
+    except Exception as e:
+        logging.exception("Ошибка при активации подписки в Supabase: %s", e)
+        await message.answer("⚠️ Оплата прошла, но произошла ошибка при активации подписки. Обратитесь в поддержку.")
 
 
 async def main() -> None:
