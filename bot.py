@@ -7,6 +7,13 @@ from dotenv import load_dotenv
 # 1. Загружаем переменные окружения в самом верху файла с переопределением
 load_dotenv(override=True)
 
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger(__name__)
+
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, LabeledPrice
@@ -39,7 +46,7 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 # Чтение URL из переменных окружения
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://62-217-177-189.sslip.io/index.html")
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://217-199-253-99.sslip.io")
 PAYMENT_URL = os.getenv("PAYMENT_URL", "https://t.me/JuristCalc_bot?start=buy")
 
 
@@ -64,10 +71,54 @@ async def command_start_handler(message: types.Message, command: CommandObject) 
     """
     Обработчик команды /start
     Если передан диплинк 'buy' (/start buy), автоматический запуск инвойса на оплату.
+    Для нового пользователя начисляет 5 дней бесплатного пробного периода в Supabase.
     """
     if command.args == "buy":
         await send_subscription_invoice(message.chat.id)
         return
+
+    # Начисление 5-дневного триала новому пользователю в Supabase
+    telegram_id = message.from_user.id
+    now_utc = datetime.now(timezone.utc)
+    trial_until = now_utc + timedelta(days=5)
+
+    supabase = get_supabase()
+    if not supabase:
+        logger.warning(
+            "Supabase клиент не инициализирован (проверьте SUPABASE_URL и SUPABASE_KEY в .env). "
+            f"Триал для telegram_id={telegram_id} не может быть проверен/начислен."
+        )
+        print(f"[WARNING] Supabase клиент не инициализирован для telegram_id={telegram_id}")
+    else:
+        try:
+            logger.info(f"Проверка существующей подписки в Supabase для telegram_id={telegram_id}...")
+            print(f"[INFO] Проверка подписки в Supabase для telegram_id={telegram_id}...")
+            response = supabase.table("subscriptions").select("subscription_until, trial_used").eq("telegram_id", telegram_id).execute()
+            data = response.data
+            logger.info(f"Данные из Supabase для telegram_id={telegram_id}: {data}")
+            print(f"[INFO] Ответ Supabase для telegram_id={telegram_id}: {data}")
+
+            if not data:
+                # Новая регистрация: записи нет, создаем 5-дневный бесплатный триал
+                insert_payload = {
+                    "telegram_id": telegram_id,
+                    "subscription_until": trial_until.isoformat(),
+                    "trial_used": True
+                }
+                logger.info(f"Вставка новой записи триала в Supabase: {insert_payload}")
+                print(f"[INFO] Выполняется вставка триала в Supabase: {insert_payload}")
+                insert_result = supabase.table("subscriptions").insert(insert_payload).execute()
+                logger.info(f"Успешно создана запись триала в Supabase: {insert_result.data}")
+                print(f"[SUCCESS] Успешно создана запись триала в Supabase: {insert_result.data}")
+            else:
+                logger.info(
+                    f"Пользователь telegram_id={telegram_id} уже присутствует в базе подписок. "
+                    f"Текущие данные: {data[0]}. Повторный триал не начисляется."
+                )
+                print(f"[INFO] Пользователь telegram_id={telegram_id} уже есть в базе, повторный триал не требуется.")
+        except Exception as e:
+            logger.exception(f"Ошибка при работе с таблицей subscriptions в Supabase для telegram_id={telegram_id}: {e}")
+            print(f"[ERROR] Ошибка Supabase при обработке /start для telegram_id={telegram_id}: {e}")
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
