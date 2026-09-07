@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, LabeledPrice
-from supabase import create_client, Client
+from supadns import create_smart_client
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 PAYMASTER_TOKEN = os.getenv("PAYMASTER_PROVIDER_TOKEN")
@@ -29,16 +29,12 @@ if not PAYMASTER_TOKEN:
     raise ValueError("Не задан PAYMASTER_PROVIDER_TOKEN в файле .env")
 
 
-def get_supabase() -> Client:
-    """
-    Динамически создает и возвращает клиент Supabase, 
-    используя актуальные переменные окружения из .env при каждом вызове.
-    """
+def get_supabase():
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_KEY")
     if not url or not key:
         return None
-    return create_client(url, key)
+    return create_smart_client(url, key)
 
 
 # Инициализация бота и диспетчера

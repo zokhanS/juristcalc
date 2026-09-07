@@ -1,6 +1,8 @@
 fastapi
 uvicorn
 supabase
+supadns
 python-dotenv
 aiogram
 slowapi
+

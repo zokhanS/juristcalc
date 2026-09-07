@@ -14,7 +14,7 @@ load_dotenv(override=True)
 from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from supabase import create_client, Client
+from supadns import create_smart_client
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -32,15 +32,12 @@ if not all([SUPABASE_URL, SUPABASE_KEY, TOME_SECRET_KEY, PAYMASTER_PROVIDER_TOKE
     raise ValueError("Не все обязательные переменные окружения заданы. Проверьте ваш .env файл.")
 
 
-def get_supabase() -> Client:
-    """
-    Динамически возвращает клиент Supabase на основе актуальных переменных окружения.
-    """
+def get_supabase():
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_KEY")
     if not url or not key:
-        raise ValueError("SUPABASE_URL или SUPABASE_KEY не заданы в .env")
-    return create_client(url, key)
+        return None
+    return create_smart_client(url, key)
 
 
 def verify_telegram_init_data(init_data: str) -> dict | None:
