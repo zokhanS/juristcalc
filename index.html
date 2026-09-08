@@ -1909,49 +1909,69 @@
             });
         }
 
-        window.addEventListener('DOMContentLoaded', () => {
-            const tg = window.Telegram?.WebApp;
-            if (tg) tg.ready();
+        function getTelegramInitDataWithTimeout(timeoutMs = 3000) {
+            return new Promise((resolve) => {
+                const startTime = Date.now();
+                const check = () => {
+                    const initData = window.Telegram?.WebApp?.initData;
+                    if (initData && initData.length > 0) {
+                        resolve(initData);
+                    } else if (Date.now() - startTime >= timeoutMs) {
+                        resolve(null);
+                    } else {
+                        setTimeout(check, 100);
+                    }
+                };
+                check();
+            });
+        }
 
-            // Заблокировать все платные вкладки по умолчанию
+        window.addEventListener('DOMContentLoaded', async () => {
+            const tg = window.Telegram?.WebApp;
+            if (tg) {
+                tg.ready();
+                tg.expand();
+            }
+
             isSubscribed = false;
             applyFreemiumRestrictions();
             initializeApp();
 
-            const initData = window.Telegram?.WebApp?.initData;
+            const initData = await getTelegramInitDataWithTimeout(3000);
 
             if (!initData) {
-                // initData отсутствует (страница открыта вне Telegram) - вкладки остаются заблокированными
+                console.warn("initData не получен (запуск вне Telegram или таймаут)");
                 applyFreemiumRestrictions();
                 return;
             }
 
-            // Безопасный запрос к FastAPI серверу с передачей initData в заголовке
-            fetch('/api/check-subscription', {
-                headers: {
-                    'X-Telegram-Init-Data': initData
+            try {
+                const response = await fetch(`/api/check-subscription?_t=${Date.now()}`, {
+                    method: 'GET',
+                    headers: {
+                        'X-Telegram-Init-Data': initData
+                    },
+                    cache: 'no-store'
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status}`);
                 }
-            })
-                .then(res => {
-                    if (!res.ok) {
-                        throw new Error(`HTTP error ${res.status}`);
-                    }
-                    return res.json();
-                })
-                .then(data => {
-                    if (data && data.active === true) {
-                        isSubscribed = true;
-                        removeFreemiumRestrictions();
-                    } else {
-                        isSubscribed = false;
-                        applyFreemiumRestrictions();
-                    }
-                })
-                .catch(err => {
-                    console.error("Ошибка проверки подписки:", err);
+
+                const data = await response.json();
+
+                if (data && data.active === true) {
+                    isSubscribed = true;
+                    removeFreemiumRestrictions();
+                } else {
                     isSubscribed = false;
                     applyFreemiumRestrictions();
-                });
+                }
+            } catch (err) {
+                console.error("Ошибка проверки подписки:", err);
+                isSubscribed = false;
+                applyFreemiumRestrictions();
+            }
         });
 
         function initializeApp() {

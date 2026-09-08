@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 # 1. Загружаем переменные окружения на самом верху до импорта bot.py
 load_dotenv(override=True)
 
-from fastapi import FastAPI, HTTPException, Request, Header
+from fastapi import FastAPI, HTTPException, Request, Header, Response
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from supadns import create_smart_client
@@ -93,7 +93,7 @@ def verify_telegram_init_data(init_data: str) -> dict | None:
             return None
 
         current_timestamp = int(datetime.now(timezone.utc).timestamp())
-        if current_timestamp - auth_date > 86400 or auth_date > current_timestamp + 300:
+        if current_timestamp - auth_date > 86400 or auth_date > current_timestamp + 1800:
             return None
 
         # Извлечение и парсинг данных пользователя
@@ -148,9 +148,10 @@ app.add_middleware(
 
 
 @app.get("/api/check-subscription")
-@limiter.limit("30/minute")
+@limiter.limit("60/minute")
 async def check_subscription(
     request: Request,
+    response: Response,
     x_telegram_init_data: str = Header(None, alias="X-Telegram-Init-Data")
 ):
     """
@@ -158,6 +159,10 @@ async def check_subscription(
     Принимает заголовок X-Telegram-Init-Data, валидирует подпись и извлекает проверенный telegram_id.
     Для новых пользователей автоматически активирует 5-дневный триал-период.
     """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+
     if not x_telegram_init_data:
         raise HTTPException(status_code=401, detail="Отсутствует заголовок X-Telegram-Init-Data")
 
