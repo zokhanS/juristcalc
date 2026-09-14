@@ -109,25 +109,50 @@ def verify_telegram_init_data(init_data: str) -> dict | None:
         return None
 
 
+SUPPORT_BOT_TOKEN = os.getenv("SUPPORT_BOT_TOKEN")
+RUN_SUPPORT_IN_MAIN = os.getenv("RUN_SUPPORT_IN_MAIN", "true").lower() in ("true", "1", "yes")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Жизненный цикл FastAPI. Запускает бота при старте сервера и останавливает при выключении.
+    Жизненный цикл FastAPI. Запускает основного бота и опционально бота техподдержки в фоне.
     """
     print("🚀 Запуск Telegram-бота в фоне...")
     # Удаляем вебхуки и пропускаем старые апдейты
     await bot.delete_webhook(drop_pending_updates=True)
     # Запускаем поллинг как фоновую задачу
     polling_task = asyncio.create_task(dp.start_polling(bot))
-    
+
+    support_polling_task = None
+    if SUPPORT_BOT_TOKEN and RUN_SUPPORT_IN_MAIN:
+        try:
+            from support_bot import support_bot, support_dp
+            if support_bot:
+                print("🚀 Запуск Telegram-бота техподдержки в фоне...")
+                await support_bot.delete_webhook(drop_pending_updates=True)
+                support_polling_task = asyncio.create_task(support_dp.start_polling(support_bot))
+        except Exception as e:
+            print(f"⚠️ Ошибка при запуске бота техподдержки в lifespan: {e}")
+    elif not SUPPORT_BOT_TOKEN:
+        print("ℹ️ SUPPORT_BOT_TOKEN не задан в .env, бот поддержки в фоне не запущен.")
+
     yield  # В этот момент FastAPI обрабатывает запросы
-    
+
     print("🛑 Остановка Telegram-бота...")
     polling_task.cancel()
     try:
         await polling_task
     except asyncio.CancelledError:
         pass
+
+    if support_polling_task:
+        print("🛑 Остановка Telegram-бота техподдержки...")
+        support_polling_task.cancel()
+        try:
+            await support_polling_task
+        except asyncio.CancelledError:
+            pass
 
 
 # Инициализация Rate Limiter (SlowAPI) по IP-адресу

@@ -131,7 +131,31 @@
         .header-actions {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
+        }
+
+        .header-action-btn {
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-light);
+            padding: 8px 14px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: var(--transition);
+            white-space: nowrap;
+            text-decoration: none;
+        }
+
+        .header-action-btn:hover {
+            background: var(--bg-card);
+            transform: translateY(-1px);
+            border-color: rgba(255, 255, 255, 0.15);
         }
 
         .theme-toggle-btn {
@@ -173,6 +197,70 @@
 
         .icon-btn:hover {
             background: var(--bg-card);
+        }
+
+        /* Стили модального окна профиля */
+        .profile-card {
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .profile-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        .profile-item:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .profile-label {
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        .profile-value {
+            color: var(--text-light);
+            font-weight: 600;
+            font-size: 13px;
+            word-break: break-all;
+            text-align: right;
+        }
+
+        .profile-status-badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .status-active {
+            color: #10b981;
+            background: rgba(16, 185, 129, 0.12);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .status-expired {
+            color: #f43f5e;
+            background: rgba(244, 63, 94, 0.12);
+            border: 1px solid rgba(244, 63, 94, 0.3);
+        }
+
+        .status-trial {
+            color: #fbbf24;
+            background: rgba(251, 191, 36, 0.12);
+            border: 1px solid rgba(251, 191, 36, 0.3);
         }
 
         /* Затемнение при открытии меню */
@@ -877,6 +965,23 @@
                 display: none;
             }
 
+            .header-actions {
+                gap: 6px;
+            }
+
+            .header-action-btn .btn-text {
+                display: none;
+            }
+
+            .header-action-btn {
+                padding: 0;
+                width: 36px;
+                height: 36px;
+                border-radius: 8px;
+                font-size: 16px;
+                justify-content: center;
+            }
+
             /* Скрываем текстовую кнопку и показываем иконки */
             .theme-toggle-btn {
                 display: none;
@@ -884,6 +989,9 @@
 
             .icon-btn {
                 display: flex;
+                width: 36px;
+                height: 36px;
+                font-size: 16px;
             }
 
             .tab-arrow {
@@ -966,6 +1074,16 @@
             </div>
 
             <div class="header-actions">
+                <button id="profile-btn" class="header-action-btn" onclick="openProfileModal()" aria-label="Профиль" title="Профиль">
+                    <span class="btn-icon">👤</span><span class="btn-text">Профиль</span>
+                </button>
+                <button id="terms-btn" class="header-action-btn" onclick="openTermsModal()" aria-label="Условия" title="Условия">
+                    <span class="btn-icon">📄</span><span class="btn-text">Условия</span>
+                </button>
+                <button id="support-btn" class="header-action-btn" onclick="openSupportBot()" aria-label="Поддержка" title="Поддержка">
+                    <span class="btn-icon">💬</span><span class="btn-text">Поддержка</span>
+                </button>
+
                 <button id="theme-toggle" class="theme-toggle-btn" onclick="toggleTheme()">☀️ Светлая тема</button>
 
                 <button id="theme-toggle-mobile" class="icon-btn" onclick="toggleTheme()"
@@ -1711,6 +1829,60 @@
             </div>
         </div>
     </div>
+    <div id="profile-modal" class="modal-overlay" onclick="closeModalOnOverlay(event, 'profile-modal')">
+        <div class="modal-window">
+            <div class="modal-header">
+                <span class="modal-title">👤 Личный кабинет</span>
+                <button class="modal-close-btn" onclick="closeModal('profile-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="profile-card">
+                    <div class="profile-item">
+                        <span class="profile-label">Telegram ID</span>
+                        <span id="profile-telegram-id" class="profile-value">Загрузка...</span>
+                    </div>
+                    <div class="profile-item" id="profile-username-row" style="display: none;">
+                        <span class="profile-label">Пользователь</span>
+                        <span id="profile-user-name" class="profile-value">—</span>
+                    </div>
+                    <div class="profile-item">
+                        <span class="profile-label">Статус подписки</span>
+                        <span id="profile-sub-status" class="profile-status-badge status-expired">Истекла или не оформлена</span>
+                    </div>
+                    <div class="profile-item">
+                        <span class="profile-label">Дата окончания</span>
+                        <span id="profile-sub-expiry" class="profile-value">—</span>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <button id="profile-subscribe-btn" class="btn" style="width: 100%; margin-bottom: 0;" onclick="openPaymentLink()">
+                        💳 Продлить / Оформить подписку
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" style="margin-bottom:0; width: 100%;"
+                    onclick="closeModal('profile-modal')">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="terms-modal" class="modal-overlay" onclick="closeModalOnOverlay(event, 'terms-modal')">
+        <div class="modal-window">
+            <div class="modal-header">
+                <span class="modal-title">📄 Политика конфиденциальности и условия использования</span>
+                <button class="modal-close-btn" onclick="closeModal('terms-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="terms-content" style="color: var(--text-main); font-size: 14px; line-height: 1.6;">Раздел находится в разработке. Условия сервиса будут опубликованы в ближайшее время.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" style="margin-bottom:0; width: 100%;"
+                    onclick="closeModal('terms-modal')">Закрыть</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         // --- УПРАВЛЕНИЕ ТЕМАМИ ---
@@ -1868,6 +2040,82 @@
             document.body.appendChild(overlay);
         }
 
+        const SUPPORT_BOT_USERNAME = window.SUPPORT_BOT_USERNAME || "ИМЯ_ВАШЕГО_БОТА_ПОДДЕРЖКИ_bot";
+        window.currentUserSubscription = null;
+
+        function updateProfileModalData() {
+            const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+            const tgIdEl = document.getElementById('profile-telegram-id');
+            const nameRow = document.getElementById('profile-username-row');
+            const nameEl = document.getElementById('profile-user-name');
+            const statusEl = document.getElementById('profile-sub-status');
+            const expiryEl = document.getElementById('profile-sub-expiry');
+
+            if (!tgIdEl || !statusEl || !expiryEl) return;
+
+            if (tgUser && tgUser.id) {
+                tgIdEl.textContent = tgUser.id;
+                const fullName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ');
+                const usernameStr = tgUser.username ? ` (@${tgUser.username})` : '';
+                nameEl.textContent = (fullName + usernameStr) || '—';
+                if (nameRow) nameRow.style.display = 'flex';
+            } else {
+                tgIdEl.textContent = 'Не определен (вне Telegram)';
+                if (nameRow) nameRow.style.display = 'none';
+            }
+
+            const sub = window.currentUserSubscription;
+            if (sub) {
+                statusEl.className = 'profile-status-badge';
+                if (sub.active === true) {
+                    if (sub.is_trial === true) {
+                        statusEl.textContent = 'Пробный период 5 дней';
+                        statusEl.classList.add('status-trial');
+                    } else {
+                        statusEl.textContent = 'Активна';
+                        statusEl.classList.add('status-active');
+                    }
+                } else {
+                    statusEl.textContent = 'Истекла или не оформлена';
+                    statusEl.classList.add('status-expired');
+                }
+
+                expiryEl.textContent = sub.expires_at || '—';
+            } else {
+                statusEl.className = 'profile-status-badge status-expired';
+                statusEl.textContent = 'Истекла или не оформлена';
+                expiryEl.textContent = '—';
+            }
+        }
+
+        function openProfileModal() {
+            updateProfileModalData();
+            openModal('profile-modal');
+        }
+
+        function openTermsModal() {
+            openModal('terms-modal');
+        }
+
+        function openSupportBot() {
+            const botUsername = (typeof SUPPORT_BOT_USERNAME !== 'undefined' ? SUPPORT_BOT_USERNAME : "ИМЯ_ВАШЕГО_БОТА_ПОДДЕРЖКИ_bot").replace(/^@/, '');
+            const url = 'https://t.me/' + botUsername;
+            if (window.Telegram?.WebApp?.openTelegramLink) {
+                window.Telegram.WebApp.openTelegramLink(url);
+            } else {
+                window.open(url, '_blank');
+            }
+        }
+
+        function openPaymentLink() {
+            const url = "https://t.me/JuristCalc_bot?start=buy";
+            if (window.Telegram?.WebApp?.openTelegramLink) {
+                window.Telegram.WebApp.openTelegramLink(url);
+            } else {
+                window.open(url, '_blank');
+            }
+        }
+
         let isSubscribed = false;
         const PAYMENT_URL = "https://t.me/JuristCalc_bot?start=buy";
         const PAID_TAB_IDS = ['tab-sr', 'tab-fin-calc', 'tab-ip-calc', 'tab-ip-dates', 'tab-bankruptcy'];
@@ -1941,7 +2189,9 @@
 
             if (!initData) {
                 console.warn("initData не получен (запуск вне Telegram или таймаут)");
+                window.currentUserSubscription = { active: false, is_trial: false, expires_at: null };
                 applyFreemiumRestrictions();
+                updateProfileModalData();
                 return;
             }
 
@@ -1959,6 +2209,8 @@
                 }
 
                 const data = await response.json();
+                window.currentUserSubscription = data;
+                updateProfileModalData();
 
                 if (data && data.active === true) {
                     isSubscribed = true;
@@ -1969,6 +2221,8 @@
                 }
             } catch (err) {
                 console.error("Ошибка проверки подписки:", err);
+                window.currentUserSubscription = { active: false, is_trial: false, expires_at: null };
+                updateProfileModalData();
                 isSubscribed = false;
                 applyFreemiumRestrictions();
             }
