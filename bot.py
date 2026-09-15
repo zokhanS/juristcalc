@@ -1,4 +1,5 @@
 import os
+import html
 import logging
 import asyncio
 from datetime import datetime, timezone, timedelta
@@ -41,9 +42,61 @@ def get_supabase():
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Чтение URL из переменных окружения
+# Чтение переменных окружения
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://217-199-253-99.sslip.io")
 PAYMENT_URL = os.getenv("PAYMENT_URL", "https://t.me/JuristCalc_bot?start=buy")
+SUPPORT_BOT_USERNAME = os.getenv("SUPPORT_BOT_USERNAME", "").replace("@", "").strip()
+ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID", "").strip()
+
+
+def get_support_url() -> str:
+    """
+    Возвращает ссылку на бота поддержки или запасной контакт администратора.
+    """
+    if SUPPORT_BOT_USERNAME:
+        return f"https://t.me/{SUPPORT_BOT_USERNAME}"
+    if ADMIN_TELEGRAM_ID.isdigit():
+        return f"tg://user?id={ADMIN_TELEGRAM_ID}"
+    return "https://t.me/"
+
+
+def get_start_keyboard() -> InlineKeyboardMarkup:
+    """
+    Формирует инлайн-клавиатуру стартового сообщения:
+    Ряд 1: Открыть Калькулятор
+    Ряд 2: Оплатить подписку
+    Ряд 3: Профиль, Условия, Поддержка
+    """
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⚖️ Открыть Калькулятор",
+                    web_app=WebAppInfo(url=WEBAPP_URL)
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💳 Оплатить подписку",
+                    callback_data="buy_subscription"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="👤 Профиль",
+                    callback_data="bot_profile"
+                ),
+                InlineKeyboardButton(
+                    text="📄 Условия",
+                    callback_data="bot_terms"
+                ),
+                InlineKeyboardButton(
+                    text="💬 Поддержка",
+                    url=get_support_url()
+                )
+            ]
+        ]
+    )
 
 
 async def send_subscription_invoice(chat_id: int):
@@ -68,80 +121,178 @@ async def command_start_handler(message: types.Message, command: CommandObject) 
     Обработчик команды /start
     Если передан диплинк 'buy' (/start buy), автоматический запуск инвойса на оплату.
     Для нового пользователя начисляет 5 дней бесплатного пробного периода в Supabase.
+    Для зарегистрированного пользователя проверяет подписку и выводит актуальный статус.
     """
     if command.args == "buy":
         await send_subscription_invoice(message.chat.id)
         return
 
-    # Начисление 5-дневного триала новому пользователю в Supabase
     telegram_id = message.from_user.id
+    first_name = html.escape(message.from_user.first_name or "Пользователь")
     now_utc = datetime.now(timezone.utc)
     trial_until = now_utc + timedelta(days=5)
 
+    keyboard = get_start_keyboard()
     supabase = get_supabase()
+
     if not supabase:
         logger.warning(
             "Supabase клиент не инициализирован (проверьте SUPABASE_URL и SUPABASE_KEY в .env). "
-            f"Триал для telegram_id={telegram_id} не может быть проверен/начислен."
+            f"Статус для telegram_id={telegram_id} не может быть проверен."
         )
-        print(f"[WARNING] Supabase клиент не инициализирован для telegram_id={telegram_id}")
-    else:
+        welcome_text = (
+            f"Привет, {first_name}! 👋\n\n"
+            "Добро пожаловать в Судебный & Исполнительный Помощник PRO.\n\n"
+            "Для работы нажмите кнопку ниже."
+        )
+        await message.answer(welcome_text, reply_markup=keyboard, parse_mode="HTML")
+        return
+
+    try:
+        logger.info(f"Проверка существующей подписки в Supabase для telegram_id={telegram_id}...")
+        response = supabase.table("subscriptions").select("subscription_until, trial_used").eq("telegram_id", telegram_id).execute()
+        data = response.data
+        logger.info(f"Данные из Supabase для telegram_id={telegram_id}: {data}")
+
+        if not data:
+            # Сценарий 1 (Новый пользователь): начисление 5 дней бесплатного доступа
+            insert_payload = {
+                "telegram_id": telegram_id,
+                "subscription_until": trial_until.isoformat(),
+                "trial_used": True
+            }
+            logger.info(f"Вставка новой записи триала в Supabase: {insert_payload}")
+            supabase.table("subscriptions").insert(insert_payload).execute()
+
+            welcome_text = (
+                f"Привет, {first_name}! 👋\n\n"
+                "Добро пожаловать в Судебный & Исполнительный Помощник PRO.\n\n"
+                "🎁 Вам начислен бесплатный пробный доступ на 5 дней ко всем функциям калькулятора!\n\n"
+                "Для работы нажмите кнопку ниже."
+            )
+        else:
+            # Сценарий 2 (Повторный запуск, запись уже есть в базе): не начислять триал заново
+            logger.info(
+                f"Пользователь telegram_id={telegram_id} уже присутствует в базе. "
+                "Повторный триал не начисляется."
+            )
+            sub_until_str = data[0].get("subscription_until")
+            sub_until = None
+            if sub_until_str:
+                try:
+                    sub_until = datetime.fromisoformat(sub_until_str.replace("Z", "+00:00"))
+                except Exception as parse_err:
+                    logger.error(f"Ошибка парсинга даты subscription_until: {parse_err}")
+
+            if sub_until and sub_until > now_utc:
+                date_str = sub_until.strftime("%d.%m.%Y %H:%M")
+                welcome_text = (
+                    f"С возвращением, {first_name}! 👋\n\n"
+                    f"✅ Ваша подписка активна до: <b>{date_str}</b> (UTC).\n\n"
+                    "Нажмите кнопку ниже для перехода в калькулятор."
+                )
+            else:
+                welcome_text = (
+                    f"С возвращением, {first_name}! 👋\n\n"
+                    "❌ Срок действия вашего доступа истек.\n\n"
+                    "Чтобы продолжить пользоваться калькулятором, оформите подписку на 30 дней за 299 ₽."
+                )
+
+        await message.answer(welcome_text, reply_markup=keyboard, parse_mode="HTML")
+
+    except Exception as e:
+        logger.exception(f"Ошибка при работе с таблицей subscriptions в Supabase для telegram_id={telegram_id}: {e}")
+        welcome_text = (
+            f"Привет, {first_name}! 👋\n\n"
+            "Добро пожаловать в Судебный & Исполнительный Помощник PRO.\n\n"
+            "Для работы нажмите кнопку ниже."
+        )
+        await message.answer(welcome_text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@dp.callback_query(F.data == "bot_profile")
+async def process_profile_callback(callback_query: types.CallbackQuery) -> None:
+    """
+    Обработчик кнопки «👤 Профиль»
+    Запрашивает статус подписки из Supabase и отправляет данные пользователю.
+    """
+    await callback_query.answer()
+    telegram_id = callback_query.from_user.id
+    first_name = html.escape(callback_query.from_user.first_name or "Пользователь")
+    now_utc = datetime.now(timezone.utc)
+    supabase = get_supabase()
+
+    status_text = "Не оформлена"
+    expires_str = "—"
+
+    if supabase:
         try:
-            logger.info(f"Проверка существующей подписки в Supabase для telegram_id={telegram_id}...")
-            print(f"[INFO] Проверка подписки в Supabase для telegram_id={telegram_id}...")
             response = supabase.table("subscriptions").select("subscription_until, trial_used").eq("telegram_id", telegram_id).execute()
             data = response.data
-            logger.info(f"Данные из Supabase для telegram_id={telegram_id}: {data}")
-            print(f"[INFO] Ответ Supabase для telegram_id={telegram_id}: {data}")
-
-            if not data:
-                # Новая регистрация: записи нет, создаем 5-дневный бесплатный триал
-                insert_payload = {
-                    "telegram_id": telegram_id,
-                    "subscription_until": trial_until.isoformat(),
-                    "trial_used": True
-                }
-                logger.info(f"Вставка новой записи триала в Supabase: {insert_payload}")
-                print(f"[INFO] Выполняется вставка триала в Supabase: {insert_payload}")
-                insert_result = supabase.table("subscriptions").insert(insert_payload).execute()
-                logger.info(f"Успешно создана запись триала в Supabase: {insert_result.data}")
-                print(f"[SUCCESS] Успешно создана запись триала в Supabase: {insert_result.data}")
+            if data and data[0].get("subscription_until"):
+                sub_str = data[0]["subscription_until"]
+                sub_until = datetime.fromisoformat(sub_str.replace("Z", "+00:00"))
+                is_trial = bool(data[0].get("trial_used", False))
+                expires_str = f"{sub_until.strftime('%d.%m.%Y %H:%M')} (UTC)"
+                if sub_until > now_utc:
+                    status_text = "🟢 Активна (пробный период 5 дней)" if is_trial else "🟢 Активна"
+                else:
+                    status_text = "🔴 Срок действия истек"
             else:
-                logger.info(
-                    f"Пользователь telegram_id={telegram_id} уже присутствует в базе подписок. "
-                    f"Текущие данные: {data[0]}. Повторный триал не начисляется."
-                )
-                print(f"[INFO] Пользователь telegram_id={telegram_id} уже есть в базе, повторный триал не требуется.")
+                status_text = "🔴 Не оформлена"
         except Exception as e:
-            logger.exception(f"Ошибка при работе с таблицей subscriptions в Supabase для telegram_id={telegram_id}: {e}")
-            print(f"[ERROR] Ошибка Supabase при обработке /start для telegram_id={telegram_id}: {e}")
+            logger.error(f"Ошибка получения профиля из Supabase: {e}")
+            status_text = "⚠️ Ошибка проверки"
 
-    keyboard = InlineKeyboardMarkup(
+    profile_text = (
+        f"👤 <b>Профиль пользователя</b>\n\n"
+        f"🆔 <b>Telegram ID:</b> <code>{telegram_id}</code>\n"
+        f"👤 <b>Имя:</b> {first_name}\n"
+        f"📊 <b>Статус доступа:</b> {status_text}\n"
+        f"⏳ <b>Действует до:</b> {expires_str}"
+    )
+
+    profile_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="⚖️ Открыть Калькулятор", 
-                    web_app=WebAppInfo(url=WEBAPP_URL)
+                    text="💳 Оплатить подписку (299 ₽)",
+                    callback_data="buy_subscription"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="💳 Оплатить подписку", 
-                    callback_data="buy_subscription"
+                    text="⚖️ Открыть Калькулятор",
+                    web_app=WebAppInfo(url=WEBAPP_URL)
                 )
             ]
         ]
     )
+    await callback_query.message.answer(profile_text, parse_mode="HTML", reply_markup=profile_keyboard)
 
-    welcome_text = (
-        f"Привет, {message.from_user.first_name}! 👋\n\n"
-        "Добро пожаловать в Судебный & Исполнительный Помощник PRO.\n\n"
-        "🎁 Вам начислен бесплатный пробный доступ на 5 дней ко всем функциям калькулятора!\n\n"
-        "Для работы с калькулятором нажми кнопку ниже. Если у тебя еще нет подписки, "
-        "ты можешь оформить её, нажав на кнопку «💳 Оплатить подписку» или отправив команду /buy."
+
+@dp.callback_query(F.data == "bot_terms")
+async def process_terms_callback(callback_query: types.CallbackQuery) -> None:
+    """
+    Обработчик кнопки «📄 Условия»
+    Отправляет текст политики/условий сервиса.
+    """
+    await callback_query.answer()
+    support_contact = f"@{SUPPORT_BOT_USERNAME}" if SUPPORT_BOT_USERNAME else "службу поддержки"
+    terms_text = (
+        "📄 <b>Условия использования и политика сервиса</b>\n\n"
+        "1. <b>Назначение сервиса:</b> «Судебный & Исполнительный Помощник PRO» предоставляет специализированные "
+        "расчетные инструменты для судебных юристов, арбитражных управляющих и взыскателей.\n\n"
+        "2. <b>Пробный доступ:</b> Каждому новому пользователю при первой регистрации единоразово "
+        "начисляется бесплатный пробный доступ ко всем калькуляторам на 5 дней.\n\n"
+        "3. <b>Платная подписка:</b> Стоимость продления доступа составляет 299 ₽ на 30 дней. "
+        "Платежи обрабатываются безопасно через официальные провайдеры Telegram.\n\n"
+        "4. <b>Характер расчетов:</b> Все вычисления носят информационно-справочный характер. "
+        "Пользователь самостоятельно верифицирует данные с нормами процессуального права РФ перед подачей документов в суд или ФССП.\n\n"
+        f"5. <b>Техническая поддержка:</b> При вопросах или сбоях обращайтесь в {support_contact}."
     )
+    await callback_query.message.answer(terms_text, parse_mode="HTML")
 
-    await message.answer(welcome_text, reply_markup=keyboard)
 
 
 @dp.message(Command("buy"))

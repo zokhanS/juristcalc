@@ -1875,7 +1875,13 @@
                 <button class="modal-close-btn" onclick="closeModal('terms-modal')">&times;</button>
             </div>
             <div class="modal-body">
-                <p id="terms-content" style="color: var(--text-main); font-size: 14px; line-height: 1.6;">Раздел находится в разработке. Условия сервиса будут опубликованы в ближайшее время.</p>
+                <div id="terms-content" style="color: var(--text-main); font-size: 13px; line-height: 1.6; display: flex; flex-direction: column; gap: 10px;">
+                    <p><b>1. Назначение сервиса:</b> «Судебный & Исполнительный Помощник PRO» — специализированный аналитический инструмент для юристов, арбитражных управляющих и специалистов по взысканию.</p>
+                    <p><b>2. Пробный период:</b> При первой авторизации новому пользователю единоразово начисляется 5 дней бесплатного ознакомительного доступа ко всем калькуляторам.</p>
+                    <p><b>3. Подписка:</b> Стоимость продления полного доступа составляет 299 ₽ за 30 дней. Оплата производится безопасно через официальные платежные механизмы Telegram.</p>
+                    <p><b>4. Ответственность:</b> Все расчеты носят справочный характер. Пользователь самостоятельно верифицирует данные с процессуальными нормами перед подачей документов.</p>
+                    <p><b>5. Поддержка:</b> По всем вопросам и предложениям обращайтесь через кнопку «💬 Поддержка».</p>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" style="margin-bottom:0; width: 100%;"
@@ -2040,7 +2046,6 @@
             document.body.appendChild(overlay);
         }
 
-        const SUPPORT_BOT_USERNAME = window.SUPPORT_BOT_USERNAME || "ИМЯ_ВАШЕГО_БОТА_ПОДДЕРЖКИ_bot";
         window.currentUserSubscription = null;
 
         function updateProfileModalData() {
@@ -2098,12 +2103,13 @@
         }
 
         function openSupportBot() {
-            const botUsername = (typeof SUPPORT_BOT_USERNAME !== 'undefined' ? SUPPORT_BOT_USERNAME : "ИМЯ_ВАШЕГО_БОТА_ПОДДЕРЖКИ_bot").replace(/^@/, '');
-            const url = 'https://t.me/' + botUsername;
+            // Получаем username из глобальной переменной или конфига
+            const botUsername = (window.SUPPORT_BOT_USERNAME || "").replace(/^@/, '').trim();
+            const supportUrl = botUsername ? `https://t.me/${botUsername}` : 'https://t.me/';
             if (window.Telegram?.WebApp?.openTelegramLink) {
-                window.Telegram.WebApp.openTelegramLink(url);
+                window.Telegram.WebApp.openTelegramLink(supportUrl);
             } else {
-                window.open(url, '_blank');
+                window.open(supportUrl, '_blank');
             }
         }
 
@@ -2209,6 +2215,9 @@
                 }
 
                 const data = await response.json();
+                if (data && data.support_bot_username) {
+                    window.SUPPORT_BOT_USERNAME = data.support_bot_username;
+                }
                 window.currentUserSubscription = data;
                 updateProfileModalData();
 

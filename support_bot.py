@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError
 
 # 1. Загрузка переменных окружения
 load_dotenv(override=True)
@@ -22,14 +22,9 @@ logging.basicConfig(
 logger = logging.getLogger("support_bot")
 
 SUPPORT_BOT_TOKEN = os.getenv("SUPPORT_BOT_TOKEN")
-ADMIN_TELEGRAM_ID_RAW = os.getenv("ADMIN_TELEGRAM_ID")
+admin_id_val = os.getenv("ADMIN_TELEGRAM_ID", "").strip()
+ADMIN_TELEGRAM_ID: Optional[int] = int(admin_id_val) if admin_id_val.isdigit() else None
 
-ADMIN_TELEGRAM_ID: Optional[int] = None
-if ADMIN_TELEGRAM_ID_RAW:
-    try:
-        ADMIN_TELEGRAM_ID = int(ADMIN_TELEGRAM_ID_RAW.strip())
-    except ValueError:
-        logger.error(f"Некорректный ADMIN_TELEGRAM_ID: {ADMIN_TELEGRAM_ID_RAW}. Должен быть целым числом.")
 
 # Путь к локальной SQLite базе данных для хранения связок сообщений
 DB_PATH = os.path.join(os.path.dirname(__file__), "support_bot.db")
@@ -93,6 +88,14 @@ def extract_user_id_from_text(text: Optional[str]) -> Optional[int]:
     """Запасной метод извлечения user_id из текста или подписи пересланного сообщения."""
     if not text:
         return None
+    # 1. Поиск по точному шаблону: ID: <code>12345</code> или ID пользователя: <code>12345</code>
+    match = re.search(r"ID(?:\s*пользователя)?:\s*<code>(\d+)</code>", text, re.IGNORECASE)
+    if match:
+        try:
+            return int(match.group(1))
+        except ValueError:
+            pass
+    # 2. Общий поиск по ID/user_id/🆔
     match = re.search(r"(?:user_id|ID пользователя|ID|🆔)\D*(\d{5,15})", text, re.IGNORECASE)
     if match:
         try:
@@ -163,27 +166,31 @@ async def admin_reply_handler(message: types.Message):
         if message.text:
             await support_bot.send_message(
                 chat_id=target_user_id,
-                text=f"Ответ службы поддержки:\n\n{message.text}"
+                text=f"👨‍💻 <b>Ответ службы поддержки:</b>\n\n{message.text}",
+                parse_mode="HTML"
             )
         elif message.photo:
-            caption_text = f"Ответ службы поддержки:\n\n{message.caption}" if message.caption else "Ответ службы поддержки:"
+            caption_text = f"👨‍💻 <b>Ответ службы поддержки:</b>\n\n{message.caption}" if message.caption else "👨‍💻 <b>Ответ службы поддержки</b>"
             await support_bot.send_photo(
                 chat_id=target_user_id,
                 photo=message.photo[-1].file_id,
-                caption=caption_text
+                caption=caption_text,
+                parse_mode="HTML"
             )
         elif message.document:
-            caption_text = f"Ответ службы поддержки:\n\n{message.caption}" if message.caption else "Ответ службы поддержки:"
+            caption_text = f"👨‍💻 <b>Ответ службы поддержки:</b>\n\n{message.caption}" if message.caption else "👨‍💻 <b>Ответ службы поддержки</b>"
             await support_bot.send_document(
                 chat_id=target_user_id,
                 document=message.document.file_id,
-                caption=caption_text
+                caption=caption_text,
+                parse_mode="HTML"
             )
         else:
             # Для прочих типов медиа (аудио, голосовые, стикеры)
             await support_bot.send_message(
                 chat_id=target_user_id,
-                text="Ответ службы поддержки:"
+                text="👨‍💻 <b>Ответ службы поддержки:</b>",
+                parse_mode="HTML"
             )
             await support_bot.copy_message(
                 chat_id=target_user_id,
@@ -194,6 +201,9 @@ async def admin_reply_handler(message: types.Message):
         await message.reply("✅ Ответ успешно доставлен пользователю.")
         logger.info(f"Ответ успешно отправлен пользователю ID={target_user_id} от администратора.")
 
+    except TelegramForbiddenError:
+        logger.warning(f"Пользователь ID={target_user_id} заблокировал бота поддержки.")
+        await message.reply("❌ Пользователь заблокировал бота. Доставка ответа невозможна.")
     except TelegramAPIError as e:
         logger.error(f"Ошибка доставки ответа пользователю {target_user_id}: {e}")
         await message.reply(f"❌ Ошибка отправки: {e.message}")
@@ -231,8 +241,8 @@ async def user_message_handler(message: types.Message):
         "📩 <b>Новое обращение в техподдержку</b>\n\n"
         f"👤 <b>Заявитель:</b> {full_name}\n"
         f"🔗 <b>Username:</b> {username_str}\n"
-        f"🆔 <b>ID пользователя:</b> <code>{user_id}</code>\n\n"
-        "Для ответа используйте функцию Telegram \"Ответить\" (Reply) на это сообщение"
+        f"🆔 <b>ID:</b> <code>{user_id}</code>\n\n"
+        "Для ответа используйте функцию Telegram «Ответить» (Reply) на это сообщение"
     )
 
     try:

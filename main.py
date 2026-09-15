@@ -110,13 +110,15 @@ def verify_telegram_init_data(init_data: str) -> dict | None:
 
 
 SUPPORT_BOT_TOKEN = os.getenv("SUPPORT_BOT_TOKEN")
-RUN_SUPPORT_IN_MAIN = os.getenv("RUN_SUPPORT_IN_MAIN", "true").lower() in ("true", "1", "yes")
+SUPPORT_BOT_USERNAME = os.getenv("SUPPORT_BOT_USERNAME", "").replace("@", "").strip()
+RUN_SUPPORT_IN_MAIN = os.getenv("RUN_SUPPORT_IN_MAIN", "false").lower() in ("true", "1", "yes")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Жизненный цикл FastAPI. Запускает основного бота и опционально бота техподдержки в фоне.
+    По умолчанию RUN_SUPPORT_IN_MAIN=false, так как support_bot работает автономно через systemd.
     """
     print("🚀 Запуск Telegram-бота в фоне...")
     # Удаляем вебхуки и пропускаем старые апдейты
@@ -134,8 +136,8 @@ async def lifespan(app: FastAPI):
                 support_polling_task = asyncio.create_task(support_dp.start_polling(support_bot))
         except Exception as e:
             print(f"⚠️ Ошибка при запуске бота техподдержки в lifespan: {e}")
-    elif not SUPPORT_BOT_TOKEN:
-        print("ℹ️ SUPPORT_BOT_TOKEN не задан в .env, бот поддержки в фоне не запущен.")
+    else:
+        print("ℹ️ Фоновый запуск бота поддержки в main.py отключен (RUN_SUPPORT_IN_MAIN=false, управляется через systemd).")
 
     yield  # В этот момент FastAPI обрабатывает запросы
 
@@ -183,6 +185,7 @@ async def check_subscription(
     Безопасная проверка статуса подписки пользователя.
     Принимает заголовок X-Telegram-Init-Data, валидирует подпись и извлекает проверенный telegram_id.
     Для новых пользователей автоматически активирует 5-дневный триал-период.
+    Возвращает актуальный статус подписки и юзернейм бота техподдержки.
     """
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
@@ -214,7 +217,8 @@ async def check_subscription(
             return {
                 "active": True,
                 "is_trial": True,
-                "expires_at": trial_until.strftime("%Y-%m-%d %H:%M")
+                "expires_at": trial_until.strftime("%Y-%m-%d %H:%M"),
+                "support_bot_username": SUPPORT_BOT_USERNAME
             }
             
         record = data[0]
@@ -223,7 +227,12 @@ async def check_subscription(
         
         # Если поле subscription_until пустое
         if not sub_until_str:
-            return {"active": False, "is_trial": False, "expires_at": None}
+            return {
+                "active": False,
+                "is_trial": False,
+                "expires_at": None,
+                "support_bot_username": SUPPORT_BOT_USERNAME
+            }
             
         # Парсим дату (Supabase возвращает ISO строку)
         # Заменяем 'Z' на '+00:00' для корректной работы fromisoformat
@@ -234,13 +243,15 @@ async def check_subscription(
             return {
                 "active": True,
                 "is_trial": trial_used,
-                "expires_at": sub_until.strftime("%Y-%m-%d %H:%M")
+                "expires_at": sub_until.strftime("%Y-%m-%d %H:%M"),
+                "support_bot_username": SUPPORT_BOT_USERNAME
             }
         else:
             return {
                 "active": False,
                 "is_trial": False,
-                "expires_at": sub_until.strftime("%Y-%m-%d %H:%M")
+                "expires_at": sub_until.strftime("%Y-%m-%d %H:%M"),
+                "support_bot_username": SUPPORT_BOT_USERNAME
             }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
