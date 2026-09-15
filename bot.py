@@ -51,6 +51,7 @@ WEBAPP_URL = os.getenv("WEBAPP_URL", "https://217-199-253-99.sslip.io")
 PAYMENT_URL = os.getenv("PAYMENT_URL", "https://t.me/JuristCalc_bot?start=buy")
 SUPPORT_BOT_USERNAME = os.getenv("SUPPORT_BOT_USERNAME", "").replace("@", "").strip()
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID", "").strip()
+TELEGRAPH_TERMS_URL = "https://telegra.ph/Polzovatelskoe-soglashenie--Politika-konfidencialnosti-09-15"
 
 
 def get_support_url() -> str:
@@ -137,10 +138,17 @@ def get_profile_keyboard() -> InlineKeyboardMarkup:
 def get_terms_keyboard() -> InlineKeyboardMarkup:
     """
     Формирует инлайн-клавиатуру меню условий:
-    Ряд 1: « Назад в меню
+    Ряд 1: 📄 Открыть в Telegraph
+    Ряд 2: « Назад в меню
     """
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📄 Открыть в Telegraph",
+                    url=TELEGRAPH_TERMS_URL
+                )
+            ],
             [
                 InlineKeyboardButton(
                     text="« Назад в меню",
@@ -340,53 +348,35 @@ async def process_profile_callback(callback_query: types.CallbackQuery) -> None:
         pass
 
 
-def get_terms_text() -> str:
-    """
-    Формирует структурированную сводку Политики конфиденциальности и Пользовательского соглашения.
-    """
-    support_contact = SUPPORT_BOT_USERNAME if SUPPORT_BOT_USERNAME else "urcalcsupport_bot"
-    return (
-        "📄 <b>Политика конфиденциальности и Пользовательское соглашение</b>\n"
-        "<i>Редакция от 15.09.2026 г.</i>\n\n"
-        "<b>1. Политика конфиденциальности:</b>\n"
-        "Политика конфиденциальности регулирует сбор (идентификаторы, технические данные, история взаимодействий), "
-        "использование для работы сервиса и защиту данных. Передача информации третьим лицам допустима только по закону, "
-        "для исполнения обязательств (платежные системы) или с согласия пользователя. Администрация не гарантирует абсолютную безопасность, "
-        "не несёт ответственности за утечки по вине третьих лиц, а также вправе менять условия без предварительного уведомления — "
-        "их принятие происходит при продолжении использования сервиса.\n\n"
-        "<b>2. Пользовательское соглашение:</b>\n"
-        "• <b>Характер услуг:</b> Сервис «Юридический помощник» предоставляет цифровые расчетные инструменты и информационные материалы "
-        "на условиях «AS IS» («как есть»).\n"
-        "• <b>Отказ от гарантий:</b> Все решения и расчеты применяются пользователем на свой риск. "
-        "Расчеты носят информационно-справочный характер.\n"
-        "• <b>Оплата и возврат:</b> Доступ предоставляется по подписке (299 ₽ / 30 дней). "
-        "Возврат средств после предоставления доступа не осуществляется, за исключением технической невозможности "
-        "оказания услуги, заявленной в поддержку в течение 24 часов.\n"
-        "• <b>Интеллектуальная собственность:</b> Запрещено копирование, парсинг и перепродажа материалов и алгоритмов сервиса.\n"
-        f"• <b>Контакты:</b> Обращения принимаются через бота поддержки @{support_contact}."
-    )
-
-
 @dp.callback_query(F.data == "bot_terms")
 async def process_terms_callback(callback_query: types.CallbackQuery) -> None:
     """
-    Обработчик кнопки «📄 Условия»
-    Редактирует текущее сообщение, отображая условия сервиса (In-place Navigation).
+    Обработчик кнопки «📄 Условия»:
+    Выводит всплывающее уведомление и предлагает открыть документ в Telegraph с Instant View.
     """
-    await callback_query.answer()
-    terms_text = get_terms_text()
+    # Всплывающее уведомление в интерфейсе Telegram
+    await callback_query.answer("Вы открыли окно с политика/условия")
+
+    terms_info_text = (
+        "📄 <b>Политика конфиденциальности и Пользовательское соглашение</b>\n"
+        "<i>Редакция от 15.09.2026 г.</i>\n\n"
+        "Официальные тексты документов сервиса «Юридический помощник» доступны "
+        "для чтения в удобном формате статьи Telegraph Instant View.\n\n"
+        "Нажмите кнопку ниже, чтобы открыть соглашение:"
+    )
 
     if callback_query.message and hasattr(callback_query.message, "chat"):
         last_menu_messages[callback_query.message.chat.id] = callback_query.message.message_id
 
     try:
         await callback_query.message.edit_text(
-            terms_text,
+            terms_info_text,
             reply_markup=get_terms_keyboard(),
             parse_mode="HTML"
         )
     except TelegramBadRequest:
         pass
+
 
 
 @dp.callback_query(F.data == "back_to_menu")

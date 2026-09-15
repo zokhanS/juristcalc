@@ -74,9 +74,15 @@ async def test_webapp_and_keyboard():
     # 4. Проверяем клавиатуру меню условий get_terms_keyboard
     terms_kb = bot.get_terms_keyboard()
     terms_rows = terms_kb.inline_keyboard
-    assert len(terms_rows) == 1, f"Ожидался 1 ряд кнопок в меню условий, получено {len(terms_rows)}"
-    assert "Назад в меню" in terms_rows[0][0].text
-    assert terms_rows[0][0].callback_data == "back_to_menu"
+    assert len(terms_rows) == 2, f"Ожидалось 2 ряда кнопок в меню условий, получено {len(terms_rows)}"
+    btn_telegraph = terms_rows[0][0]
+    assert "Открыть в Telegraph" in btn_telegraph.text
+    assert btn_telegraph.url == "https://telegra.ph/Polzovatelskoe-soglashenie--Politika-konfidencialnosti-09-15"
+    print(f"[CHECK] Меню условий: кнопка Telegraph '{btn_telegraph.text}' -> {btn_telegraph.url}")
+
+    btn_back = terms_rows[1][0]
+    assert "Назад в меню" in btn_back.text
+    assert btn_back.callback_data == "back_to_menu"
     print(f"[CHECK] Меню условий: кнопка «Назад в меню» проверена корректно.")
 
     print("\n✅ ТЕСТ 1 УСПЕШНО ПРОЙДЕН!\n")
@@ -271,6 +277,9 @@ async def test_bot_callbacks():
 
         await bot.process_terms_callback(mock_cb)
         assert mock_cb.answer.called
+        mock_cb.answer.assert_called_with("Вы открыли окно с политика/условия")
+        print("[CHECK] callback_query.answer вызван со всплывающим уведомлением 'Вы открыли окно с политика/условия'.")
+
         assert mock_cb.message.edit_text.called, "bot_terms должен использовать edit_text"
         
         call_args = mock_cb.message.edit_text.call_args
@@ -280,13 +289,15 @@ async def test_bot_callbacks():
         assert "Политика конфиденциальности и Пользовательское соглашение" in terms_text
         assert "Редакция от 15.09.2026 г." in terms_text
         assert "Юридический помощник" in terms_text
-        assert "299 ₽" in terms_text
+        assert "Telegraph" in terms_text
         assert len(terms_text) < 4096, f"Текст условий превышает лимит Telegram: {len(terms_text)} символов"
         
-        # Проверяем кнопку назад
-        back_btns_terms = [btn for row in terms_markup.inline_keyboard for btn in row if btn.callback_data == "back_to_menu"]
-        assert len(back_btns_terms) == 1, "В меню условий должна быть кнопка «Назад в меню»"
-        print("[CHECK] Текст условий и кнопка возврата проверены успешно.")
+        # Проверяем кнопки в меню условий
+        assert len(terms_markup.inline_keyboard) == 2
+        assert "Открыть в Telegraph" in terms_markup.inline_keyboard[0][0].text
+        assert terms_markup.inline_keyboard[0][0].url == bot.TELEGRAPH_TERMS_URL
+        assert terms_markup.inline_keyboard[1][0].callback_data == "back_to_menu"
+        print("[CHECK] Текст условий и кнопки Telegraph / Назад проверены успешно.")
 
         # 3. Проверяем back_to_menu
         mock_cb.reset_mock()
