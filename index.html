@@ -1077,9 +1077,6 @@
                 <button id="profile-btn" class="header-action-btn" onclick="openProfileModal()" aria-label="Профиль" title="Профиль">
                     <span class="btn-icon">👤</span><span class="btn-text">Профиль</span>
                 </button>
-                <button id="terms-btn" class="header-action-btn" onclick="openTermsModal()" aria-label="Условия" title="Условия">
-                    <span class="btn-icon">📄</span><span class="btn-text">Условия</span>
-                </button>
                 <button id="support-btn" class="header-action-btn" onclick="openSupportBot()" aria-label="Поддержка" title="Поддержка">
                     <span class="btn-icon">💬</span><span class="btn-text">Поддержка</span>
                 </button>
@@ -1868,49 +1865,6 @@
         </div>
     </div>
 
-    <div id="terms-modal" class="modal-overlay" onclick="closeModalOnOverlay(event, 'terms-modal')">
-        <div class="modal-window">
-            <div class="modal-header">
-                <span class="modal-title">📄 Политика конфиденциальности и условия использования</span>
-                <button class="modal-close-btn" onclick="closeModal('terms-modal')">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div id="terms-content" style="color: var(--text-main); font-size: 13px; line-height: 1.6; max-height: 60vh; overflow-y: auto; padding-right: 8px;">
-                    <div style="background: rgba(59, 130, 246, 0.08); border-left: 3px solid var(--accent-blue); padding: 10px 14px; border-radius: 6px; margin-bottom: 16px;">
-                        <p style="font-size: 12px; color: var(--text-light); margin: 0;">
-                            <b>Cocoon AI Summary:</b> Политика конфиденциальности регулирует сбор (идентификаторы, техданные, история), использование для работы сервиса и защиту данных. Передача информации третьим лицам допустима только по закону, для исполнения обязательств (платежи) или с согласия пользователя. Администрация не гарантирует абсолютную безопасность, не несёт ответственности за утечки по вине третьих лиц, а также вправе менять условия без уведомления — их принятие происходит при продолжении использования сервиса.
-                        </p>
-                    </div>
-
-                    <h3 style="color: var(--text-light); font-size: 15px; margin-bottom: 8px;">Политика конфиденциальности</h3>
-                    <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Редакция от 15 сентября 2026 г.</p>
-                    <p><b>1. Общие положения:</b> 1.1. Настоящая Политика регулирует порядок обработки и защиты информации, которую Пользователь передаёт при использовании сервиса «Юридический помощник» (далее — «Сервис»). 1.2. Используя Сервис, Пользователь подтверждает своё согласие с условиями Политики.</p>
-                    <p><b>2. Сбор информации:</b> 2.1. Сервис может собирать идентификаторы аккаунта (Telegram ID, username), техническую информацию (IP-адрес, браузер) и историю взаимодействий. 2.2. Сервис не требует предоставления паспортных данных или документов.</p>
-                    <p><b>3. Использование информации:</b> Исключительно для обеспечения функционала, связи и аналитики.</p>
-                    <p><b>4. Передача третьим лицам:</b> Не передаётся, за исключением требований законодательства или платёжных провайдеров.</p>
-                    <p><b>5. Хранение и защита:</b> Принимаются разумные меры защиты, но абсолютная безопасность не гарантируется.</p>
-                    <p><b>6. Отказ от ответственности:</b> Администрация не несёт ответственности за утрату данных по вине третьих лиц.</p>
-                    <p><b>7. Изменения:</b> Вступают в силу с момента публикации в Сервисе.</p>
-
-                    <hr style="margin: 16px 0; border-color: var(--border-color);">
-
-                    <h3 style="color: var(--text-light); font-size: 15px; margin-bottom: 8px;">Пользовательское соглашение</h3>
-                    <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Редакция от 15 сентября 2026 г.</p>
-                    <p><b>1. Общие положения:</b> 1.1. Настоящее Соглашение регулирует порядок использования сервиса «Юридический помощник». 1.2. Использование сервиса (включая команду /start) означает полное согласие с условиями.</p>
-                    <p><b>2. Характер услуг:</b> Цифровые калькуляторы и расчетные алгоритмы на условиях «AS IS» («как есть»).</p>
-                    <p><b>3. Отказ от гарантий:</b> Администрация не гарантирует бесперебойную работу и не несет ответственности за прямые/косвенные убытки или результаты судебных решений. Расчеты носят справочный характер.</p>
-                    <p><b>4. Законность:</b> Ответственность за использование материалов возлагается на Пользователя.</p>
-                    <p><b>5. Интеллектуальная собственность:</b> Все права защищены. Запрещено несанкционированное копирование.</p>
-                    <p><b>6. Платежи и возвраты:</b> Подписка 299 ₽ / 30 дней. Возврат не предусмотрен в связи с нематериальным характером услуг, за исключением доказанных технических сбоев (обращение в поддержку в течение 24 часов).</p>
-                    <p><b>7. Контакты:</b> Служба поддержки доступна через кнопку «💬 Поддержка».</p>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" style="margin-bottom:0; width: 100%;"
-                    onclick="closeModal('terms-modal')">Закрыть</button>
-            </div>
-        </div>
-    </div>
 
     <script>
         // --- УПРАВЛЕНИЕ ТЕМАМИ ---
@@ -2120,9 +2074,6 @@
             openModal('profile-modal');
         }
 
-        function openTermsModal() {
-            openModal('terms-modal');
-        }
 
         function openSupportBot() {
             // Получаем username из глобальной переменной или конфига

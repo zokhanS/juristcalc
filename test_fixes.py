@@ -436,10 +436,10 @@ async def test_naming_and_legal_documents():
     assert "Судебный & Исполнительный Помощник PRO" not in html_content, "Старое название найдено в index.html!"
     assert "Помощник PRO" not in html_content, "Старое сокращение Помощник PRO найдено в index.html!"
     assert "<title>Юридический помощник</title>" in html_content, "Тег title в index.html не обновлен!"
-    assert "Cocoon AI Summary" in html_content, "Cocoon AI Summary не найдено в index.html!"
-    assert "Редакция от 15 сентября 2026 г." in html_content, "Актуальная дата документов не найдена в index.html!"
+    assert "terms-btn" not in html_content, "Кнопка terms-btn должна быть удалена из index.html!"
+    assert "terms-modal" not in html_content, "Модальное окно terms-modal должно быть удалено из index.html!"
     assert "=== ЮРИДИЧЕСКИЙ ПОМОЩНИК: ОТЧЕТ ПО ГОСПОШЛИНЕ ===" in html_content, "Заголовок отчета по госпошлине не обновлен!"
-    print("[CHECK] index.html: модальное окно условий, title и отчеты актуализированы.")
+    print("[CHECK] index.html: кнопка условий и модальное окно удалены, title и отчеты актуализированы.")
 
     # 3. Проверка main.py
     with open("main.py", "r", encoding="utf-8") as f:
