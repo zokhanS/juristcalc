@@ -21,7 +21,7 @@ import main
 
 async def test_webapp_and_keyboard():
     print("=" * 60)
-    print("ТЕСТ 1: Проверка актуальности URL WebApp и структуры клавиатуры")
+    print("ТЕСТ 1: Проверка актуальности URL WebApp и структуры клавиатур")
     print("=" * 60)
 
     # 1. Проверяем WEBAPP_URL в bot.py
@@ -31,26 +31,26 @@ async def test_webapp_and_keyboard():
     # 2. Проверяем структуру клавиатуры get_start_keyboard
     kb = bot.get_start_keyboard()
     rows = kb.inline_keyboard
-    assert len(rows) == 3, f"Ожидалось 3 ряда кнопок, получено {len(rows)}"
+    assert len(rows) == 3, f"Ожидалось 3 ряда кнопок в главном меню, получено {len(rows)}"
 
     # Ряд 1: Открыть Калькулятор
     assert len(rows[0]) == 1
     btn_webapp = rows[0][0]
-    print(f"[CHECK] Ряд 1: '{btn_webapp.text}' -> {btn_webapp.web_app.url}")
+    print(f"[CHECK] Главное меню Ряд 1: '{btn_webapp.text}' -> {btn_webapp.web_app.url}")
     assert "Открыть Калькулятор" in btn_webapp.text
     assert btn_webapp.web_app.url == bot.WEBAPP_URL
 
     # Ряд 2: Оплатить подписку
     assert len(rows[1]) == 1
     btn_pay = rows[1][0]
-    print(f"[CHECK] Ряд 2: '{btn_pay.text}' -> callback_data={btn_pay.callback_data}")
+    print(f"[CHECK] Главное меню Ряд 2: '{btn_pay.text}' -> callback_data={btn_pay.callback_data}")
     assert "Оплатить подписку" in btn_pay.text
     assert btn_pay.callback_data == "buy_subscription"
 
     # Ряд 3: Профиль, Условия, Поддержка
     assert len(rows[2]) == 3
     btn_prof, btn_terms, btn_supp = rows[2][0], rows[2][1], rows[2][2]
-    print(f"[CHECK] Ряд 3: '{btn_prof.text}', '{btn_terms.text}', '{btn_supp.text}' -> {btn_supp.url}")
+    print(f"[CHECK] Главное меню Ряд 3: '{btn_prof.text}', '{btn_terms.text}', '{btn_supp.text}'")
     assert "Профиль" in btn_prof.text
     assert btn_prof.callback_data == "bot_profile"
     assert "Условия" in btn_terms.text
@@ -59,12 +59,32 @@ async def test_webapp_and_keyboard():
     expected_support_url = f"https://t.me/{bot.SUPPORT_BOT_USERNAME}" if bot.SUPPORT_BOT_USERNAME else "https://t.me/"
     assert btn_supp.url == expected_support_url, f"Неверный URL поддержки: {btn_supp.url}"
 
+    # 3. Проверяем клавиатуру меню профиля get_profile_keyboard
+    prof_kb = bot.get_profile_keyboard()
+    prof_rows = prof_kb.inline_keyboard
+    assert len(prof_rows) == 3, f"Ожидалось 3 ряда кнопок в меню профиля, получено {len(prof_rows)}"
+    assert "Оплатить подписку (299 ₽)" in prof_rows[0][0].text
+    assert prof_rows[0][0].callback_data == "buy_subscription"
+    assert "Открыть Калькулятор" in prof_rows[1][0].text
+    assert prof_rows[1][0].web_app.url == bot.WEBAPP_URL
+    assert "Назад в меню" in prof_rows[2][0].text
+    assert prof_rows[2][0].callback_data == "back_to_menu"
+    print(f"[CHECK] Меню профиля: кнопки проверены корректно.")
+
+    # 4. Проверяем клавиатуру меню условий get_terms_keyboard
+    terms_kb = bot.get_terms_keyboard()
+    terms_rows = terms_kb.inline_keyboard
+    assert len(terms_rows) == 1, f"Ожидался 1 ряд кнопок в меню условий, получено {len(terms_rows)}"
+    assert "Назад в меню" in terms_rows[0][0].text
+    assert terms_rows[0][0].callback_data == "back_to_menu"
+    print(f"[CHECK] Меню условий: кнопка «Назад в меню» проверена корректно.")
+
     print("\n✅ ТЕСТ 1 УСПЕШНО ПРОЙДЕН!\n")
 
 
 async def test_supabase_start_scenarios():
     print("=" * 60)
-    print("ТЕСТ 2: Проверка сценариев /start (Новый пользователь, Активная и Истекшая подписка)")
+    print("ТЕСТ 2: Проверка сценариев /start, удаления сообщений и актуального названия")
     print("=" * 60)
 
     test_user_id = 777888999
@@ -72,6 +92,12 @@ async def test_supabase_start_scenarios():
     mock_message.chat.id = test_user_id
     mock_message.from_user.id = test_user_id
     mock_message.from_user.first_name = "Алексей"
+    mock_message.delete = AsyncMock()
+    
+    sent_mock_msg = MagicMock()
+    sent_mock_msg.message_id = 12345
+    mock_message.answer = AsyncMock(return_value=sent_mock_msg)
+    
     mock_command = MagicMock()
     mock_command.args = None
 
@@ -93,16 +119,35 @@ async def test_supabase_start_scenarios():
     mock_insert.execute.side_effect = mock_insert_execute
 
     original_get_supabase = bot.get_supabase
+    original_delete_message = bot.bot.delete_message
+    mock_delete_message = AsyncMock()
+    bot.bot.delete_message = mock_delete_message
     bot.get_supabase = lambda: mock_supabase
 
     try:
-        # --- СЦЕНАРИЙ 1: Новый пользователь (not data) ---
+        # --- СЦЕНАРИЙ 1: Новый пользователь (not data) + удаление предыдущего сообщения ---
         print("\n--- Сценарий 1: Новый пользователь (первый запуск) ---")
         mock_eq.execute.return_value = MagicMock(data=[])
         mock_table.insert.reset_mock()
+        mock_message.delete.reset_mock()
+        mock_delete_message.reset_mock()
+        bot.last_menu_messages[test_user_id] = 998877
 
         await bot.command_start_handler(mock_message, mock_command)
 
+        # Проверка удаления команды пользователя
+        assert mock_message.delete.called, "Сообщение команды /start пользователя должно удаляться!"
+        print("[CHECK] Удаление входящей команды /start выполнено.")
+
+        # Проверка удаления предыдущего меню
+        mock_delete_message.assert_called_with(chat_id=test_user_id, message_id=998877)
+        print("[CHECK] Предыдущее меню бота (ID=998877) успешно удалено.")
+
+        # Проверка обновления last_menu_messages
+        assert bot.last_menu_messages.get(test_user_id) == 12345, "ID нового меню должен быть сохранен в last_menu_messages"
+        print(f"[CHECK] Новый message_id сохранен: {bot.last_menu_messages.get(test_user_id)}")
+
+        # Проверка вставки в Supabase
         assert mock_table.insert.called, "Метод insert НЕ был вызван для нового пользователя!"
         inserted_payload = mock_table.insert.call_args[0][0]
         print(f"[CHECK] Переданные данные в insert: {inserted_payload}")
@@ -112,11 +157,14 @@ async def test_supabase_start_scenarios():
         call_args = mock_message.answer.call_args
         msg_text = call_args[0][0]
         print(f"[CHECK] Текст сообщения нового пользователя:\n{msg_text}")
+        assert "Юридический помощник" in msg_text, "Сообщение должно содержать новое название сервиса"
+        assert "Судебный & Исполнительный Помощник PRO" not in msg_text, "Старое название не должно присутствовать"
         assert "бесплатный пробный доступ на 5 дней" in msg_text, "Сообщение должно содержать начисление триала на 5 дней"
 
         # --- СЦЕНАРИЙ 2А: Повторный вход с активной подпиской ---
         print("\n--- Сценарий 2А: Повторный вход (подписка АКТИВНА) ---")
         mock_table.insert.reset_mock()
+        mock_message.delete.reset_mock()
         future_date = datetime.now(timezone.utc) + timedelta(days=15)
         mock_eq.execute.return_value = MagicMock(data=[{
             "telegram_id": test_user_id,
@@ -126,6 +174,7 @@ async def test_supabase_start_scenarios():
 
         await bot.command_start_handler(mock_message, mock_command)
 
+        assert mock_message.delete.called, "Команда /start должна удаляться и при повторном входе"
         assert not mock_table.insert.called, "Метод insert НЕ должен вызываться для существующего пользователя!"
         call_args = mock_message.answer.call_args
         msg_text = call_args[0][0]
@@ -159,13 +208,14 @@ async def test_supabase_start_scenarios():
 
     finally:
         bot.get_supabase = original_get_supabase
+        bot.bot.delete_message = original_delete_message
 
     print("\n✅ ТЕСТ 2 УСПЕШНО ПРОЙДЕН!\n")
 
 
 async def test_bot_callbacks():
     print("=" * 60)
-    print("ТЕСТ 3: Проверка callback-обработчиков bot_profile и bot_terms")
+    print("ТЕСТ 3: Проверка callback-обработчиков (In-place edit_text, bot_terms, back_to_menu)")
     print("=" * 60)
 
     test_user_id = 555666777
@@ -173,6 +223,8 @@ async def test_bot_callbacks():
     mock_cb.from_user.id = test_user_id
     mock_cb.from_user.first_name = "Елена"
     mock_cb.message = AsyncMock()
+    mock_cb.message.chat.id = test_user_id
+    mock_cb.message.message_id = 555111
 
     # 1. Проверяем bot_profile
     mock_supabase = MagicMock()
@@ -196,28 +248,79 @@ async def test_bot_callbacks():
 
     try:
         await bot.process_profile_callback(mock_cb)
-        assert mock_cb.answer.called
-        call_args = mock_cb.message.answer.call_args
+        assert mock_cb.answer.called, "callback_query.answer() должен быть вызван"
+        assert mock_cb.message.edit_text.called, "Должен использоваться edit_text для in-place обновления"
+        
+        call_args = mock_cb.message.edit_text.call_args
         profile_text = call_args[0][0]
-        print(f"[CHECK] Ответ на callback bot_profile:\n{profile_text}")
+        reply_markup = call_args[1].get("reply_markup")
+        print(f"[CHECK] Ответ на callback bot_profile (edit_text):\n{profile_text}")
         assert str(test_user_id) in profile_text
         assert "Елена" in profile_text
         assert "Активна" in profile_text
         assert future_date.strftime("%d.%m.%Y %H:%M") in profile_text
+        
+        # Проверяем наличие кнопки «Назад в меню»
+        back_btns = [btn for row in reply_markup.inline_keyboard for btn in row if btn.callback_data == "back_to_menu"]
+        assert len(back_btns) == 1, "В меню профиля должна быть кнопка «Назад в меню»"
+        print("[CHECK] Кнопка «« Назад в меню» присутствует в клавиатуре профиля.")
+
+        # 2. Проверяем bot_terms
+        mock_cb.reset_mock()
+        mock_cb.message.reset_mock()
+
+        await bot.process_terms_callback(mock_cb)
+        assert mock_cb.answer.called
+        assert mock_cb.message.edit_text.called, "bot_terms должен использовать edit_text"
+        
+        call_args = mock_cb.message.edit_text.call_args
+        terms_text = call_args[0][0]
+        terms_markup = call_args[1].get("reply_markup")
+        print(f"\n[CHECK] Ответ на callback bot_terms:\n{terms_text[:200]}...")
+        assert "Политика конфиденциальности и Пользовательское соглашение" in terms_text
+        assert "Редакция от 15.09.2026 г." in terms_text
+        assert "Юридический помощник" in terms_text
+        assert "299 ₽" in terms_text
+        assert len(terms_text) < 4096, f"Текст условий превышает лимит Telegram: {len(terms_text)} символов"
+        
+        # Проверяем кнопку назад
+        back_btns_terms = [btn for row in terms_markup.inline_keyboard for btn in row if btn.callback_data == "back_to_menu"]
+        assert len(back_btns_terms) == 1, "В меню условий должна быть кнопка «Назад в меню»"
+        print("[CHECK] Текст условий и кнопка возврата проверены успешно.")
+
+        # 3. Проверяем back_to_menu
+        mock_cb.reset_mock()
+        mock_cb.message.reset_mock()
+
+        await bot.process_back_to_menu_callback(mock_cb)
+        assert mock_cb.answer.called
+        assert mock_cb.message.edit_text.called, "back_to_menu должен использовать edit_text"
+        
+        call_args = mock_cb.message.edit_text.call_args
+        menu_text = call_args[0][0]
+        menu_markup = call_args[1].get("reply_markup")
+        print(f"\n[CHECK] Ответ на callback back_to_menu:\n{menu_text[:150]}...")
+        assert "С возвращением, Елена!" in menu_text
+        assert "Ваша подписка активна" in menu_text
+        # Проверяем что вернулась стартовая клавиатура (3 ряда кнопок)
+        assert len(menu_markup.inline_keyboard) == 3, "Должна вернуться клавиатура главного меню"
+        print("[CHECK] Возврат в главное меню через edit_text проверен успешно.")
+
+        # 4. Проверяем безопасный перехват TelegramBadRequest при повторном клике
+        mock_cb.reset_mock()
+        mock_cb.message.reset_mock()
+        mock_cb.message.edit_text.side_effect = bot.TelegramBadRequest(
+            method=MagicMock(),
+            message="Bad Request: message is not modified"
+        )
+        # Не должно вызывать исключений
+        await bot.process_profile_callback(mock_cb)
+        await bot.process_terms_callback(mock_cb)
+        await bot.process_back_to_menu_callback(mock_cb)
+        print("[CHECK] Ошибка TelegramBadRequest (message is not modified) перехвачена безопасно.")
+
     finally:
         bot.get_supabase = original_get_supabase
-
-    # 2. Проверяем bot_terms
-    mock_cb.reset_mock()
-    mock_cb.message.reset_mock()
-
-    await bot.process_terms_callback(mock_cb)
-    assert mock_cb.answer.called
-    call_args = mock_cb.message.answer.call_args
-    terms_text = call_args[0][0]
-    print(f"\n[CHECK] Ответ на callback bot_terms:\n{terms_text[:150]}...")
-    assert "Условия использования" in terms_text
-    assert "299 ₽" in terms_text
 
     print("\n✅ ТЕСТ 3 УСПЕШНО ПРОЙДЕН!\n")
 
@@ -247,7 +350,6 @@ async def test_support_bot_functionality():
     mock_replied_msg.caption = None
     mock_admin_msg.reply_to_message = mock_replied_msg
 
-    # Имитируем поддержку отправки сообщения
     mock_support_bot_instance = AsyncMock()
     with patch.object(support_bot, "support_bot", mock_support_bot_instance):
         # 2А: Пользователь есть в SQLite/памяти
@@ -297,7 +399,45 @@ async def test_main_config_and_api():
     print(f"[CHECK] main.SUPPORT_BOT_USERNAME = '{main.SUPPORT_BOT_USERNAME}'")
     assert main.SUPPORT_BOT_USERNAME == "urcalcsupport_bot"
 
+    # 3. Проверяем метаданные FastAPI
+    print(f"[CHECK] main.app.title = '{main.app.title}'")
+    assert "Юридический помощник" in main.app.title, f"Ожидалось название с 'Юридический помощник', получено: {main.app.title}"
+
     print("\n✅ ТЕСТ 5 УСПЕШНО ПРОЙДЕН!\n")
+
+
+async def test_naming_and_legal_documents():
+    print("=" * 60)
+    print("ТЕСТ 6: Проверка переименования сервиса и актуализации документов")
+    print("=" * 60)
+
+    # 1. Проверка bot.py
+    with open("bot.py", "r", encoding="utf-8") as f:
+        bot_content = f.read()
+    assert "Судебный & Исполнительный Помощник PRO" not in bot_content, "Старое название найдено в bot.py!"
+    assert "Судебный Помощник PRO" not in bot_content, "Старое название инвойса найдено в bot.py!"
+    assert "Юридический помощник" in bot_content, "Новое название не найдено в bot.py!"
+    print("[CHECK] bot.py: старые названия удалены, актуальное название присутствует.")
+
+    # 2. Проверка index.html
+    with open("index.html", "r", encoding="utf-8") as f:
+        html_content = f.read()
+    assert "Судебный & Исполнительный Помощник PRO" not in html_content, "Старое название найдено в index.html!"
+    assert "Помощник PRO" not in html_content, "Старое сокращение Помощник PRO найдено в index.html!"
+    assert "<title>Юридический помощник</title>" in html_content, "Тег title в index.html не обновлен!"
+    assert "Cocoon AI Summary" in html_content, "Cocoon AI Summary не найдено в index.html!"
+    assert "Редакция от 15 сентября 2026 г." in html_content, "Актуальная дата документов не найдена в index.html!"
+    assert "=== ЮРИДИЧЕСКИЙ ПОМОЩНИК: ОТЧЕТ ПО ГОСПОШЛИНЕ ===" in html_content, "Заголовок отчета по госпошлине не обновлен!"
+    print("[CHECK] index.html: модальное окно условий, title и отчеты актуализированы.")
+
+    # 3. Проверка main.py
+    with open("main.py", "r", encoding="utf-8") as f:
+        main_content = f.read()
+    assert "Судебный & Исполнительный Помощник PRO" not in main_content
+    assert "Юридический помощник" in main_content, "Новое название не найдено в main.py!"
+    print("[CHECK] main.py: метаданные FastAPI обновлены.")
+
+    print("\n✅ ТЕСТ 6 УСПЕШНО ПРОЙДЕН!\n")
 
 
 async def main_test_suite():
@@ -306,8 +446,9 @@ async def main_test_suite():
     await test_bot_callbacks()
     await test_support_bot_functionality()
     await test_main_config_and_api()
+    await test_naming_and_legal_documents()
     print("=" * 60)
-    print("🎉 ВСЕ 5 ТЕСТОВЫХ НАБОРОВ УСПЕШНО ПРОЙДЕНЫ!")
+    print("🎉 ВСЕ 6 ТЕСТОВЫХ НАБОРОВ УСПЕШНО ПРОЙДЕНЫ!")
     print("=" * 60)
 
 

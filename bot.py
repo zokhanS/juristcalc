@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, LabeledPrice
+from aiogram.exceptions import TelegramBadRequest
 from supadns import create_smart_client
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -42,6 +43,9 @@ def get_supabase():
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
+# Хранилище ID последнего сообщения меню для каждого чата (chat_id -> message_id)
+last_menu_messages: dict[int, int] = {}
+
 # Чтение переменных окружения
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://217-199-253-99.sslip.io")
 PAYMENT_URL = os.getenv("PAYMENT_URL", "https://t.me/JuristCalc_bot?start=buy")
@@ -62,10 +66,10 @@ def get_support_url() -> str:
 
 def get_start_keyboard() -> InlineKeyboardMarkup:
     """
-    Формирует инлайн-клавиатуру стартового сообщения:
-    Ряд 1: Открыть Калькулятор
-    Ряд 2: Оплатить подписку
-    Ряд 3: Профиль, Условия, Поддержка
+    Формирует инлайн-клавиатуру главного меню:
+    Ряд 1: ⚖️ Открыть Калькулятор
+    Ряд 2: 💳 Оплатить подписку
+    Ряд 3: 👤 Профиль, 📄 Условия, 💬 Поддержка
     """
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -99,13 +103,61 @@ def get_start_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def get_profile_keyboard() -> InlineKeyboardMarkup:
+    """
+    Формирует инлайн-клавиатуру меню профиля:
+    Ряд 1: 💳 Оплатить подписку (299 ₽)
+    Ряд 2: ⚖️ Открыть Калькулятор
+    Ряд 3: « Назад в меню
+    """
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="💳 Оплатить подписку (299 ₽)",
+                    callback_data="buy_subscription"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⚖️ Открыть Калькулятор",
+                    web_app=WebAppInfo(url=WEBAPP_URL)
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="« Назад в меню",
+                    callback_data="back_to_menu"
+                )
+            ]
+        ]
+    )
+
+
+def get_terms_keyboard() -> InlineKeyboardMarkup:
+    """
+    Формирует инлайн-клавиатуру меню условий:
+    Ряд 1: « Назад в меню
+    """
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="« Назад в меню",
+                    callback_data="back_to_menu"
+                )
+            ]
+        ]
+    )
+
+
 async def send_subscription_invoice(chat_id: int):
     """
     Отправляет Telegram-инвойс для оплаты подписки через Paymaster.
     """
     await bot.send_invoice(
         chat_id=chat_id,
-        title="Подписка на Судебный Помощник PRO",
+        title="Подписка на «Юридический помощник»",
         description="Полный доступ ко всем калькуляторам и функциям на 30 дней",
         payload="sub_30_days",
         provider_token=PAYMASTER_TOKEN,
@@ -115,24 +167,15 @@ async def send_subscription_invoice(chat_id: int):
     )
 
 
-@dp.message(CommandStart())
-async def command_start_handler(message: types.Message, command: CommandObject) -> None:
+async def get_start_text(telegram_id: int, first_name: str) -> str:
     """
-    Обработчик команды /start
-    Если передан диплинк 'buy' (/start buy), автоматический запуск инвойса на оплату.
+    Формирует текст главного меню со статусом доступа.
     Для нового пользователя начисляет 5 дней бесплатного пробного периода в Supabase.
-    Для зарегистрированного пользователя проверяет подписку и выводит актуальный статус.
     """
-    if command.args == "buy":
-        await send_subscription_invoice(message.chat.id)
-        return
-
-    telegram_id = message.from_user.id
-    first_name = html.escape(message.from_user.first_name or "Пользователь")
+    first_name = html.escape(first_name or "Пользователь")
     now_utc = datetime.now(timezone.utc)
     trial_until = now_utc + timedelta(days=5)
 
-    keyboard = get_start_keyboard()
     supabase = get_supabase()
 
     if not supabase:
@@ -140,13 +183,11 @@ async def command_start_handler(message: types.Message, command: CommandObject) 
             "Supabase клиент не инициализирован (проверьте SUPABASE_URL и SUPABASE_KEY в .env). "
             f"Статус для telegram_id={telegram_id} не может быть проверен."
         )
-        welcome_text = (
+        return (
             f"Привет, {first_name}! 👋\n\n"
-            "Добро пожаловать в Судебный & Исполнительный Помощник PRO.\n\n"
+            "Добро пожаловать в «Юридический помощник».\n\n"
             "Для работы нажмите кнопку ниже."
         )
-        await message.answer(welcome_text, reply_markup=keyboard, parse_mode="HTML")
-        return
 
     try:
         logger.info(f"Проверка существующей подписки в Supabase для telegram_id={telegram_id}...")
@@ -164,9 +205,9 @@ async def command_start_handler(message: types.Message, command: CommandObject) 
             logger.info(f"Вставка новой записи триала в Supabase: {insert_payload}")
             supabase.table("subscriptions").insert(insert_payload).execute()
 
-            welcome_text = (
+            return (
                 f"Привет, {first_name}! 👋\n\n"
-                "Добро пожаловать в Судебный & Исполнительный Помощник PRO.\n\n"
+                "Добро пожаловать в «Юридический помощник».\n\n"
                 "🎁 Вам начислен бесплатный пробный доступ на 5 дней ко всем функциям калькулятора!\n\n"
                 "Для работы нажмите кнопку ниже."
             )
@@ -186,35 +227,69 @@ async def command_start_handler(message: types.Message, command: CommandObject) 
 
             if sub_until and sub_until > now_utc:
                 date_str = sub_until.strftime("%d.%m.%Y %H:%M")
-                welcome_text = (
+                return (
                     f"С возвращением, {first_name}! 👋\n\n"
                     f"✅ Ваша подписка активна до: <b>{date_str}</b> (UTC).\n\n"
                     "Нажмите кнопку ниже для перехода в калькулятор."
                 )
             else:
-                welcome_text = (
+                return (
                     f"С возвращением, {first_name}! 👋\n\n"
                     "❌ Срок действия вашего доступа истек.\n\n"
                     "Чтобы продолжить пользоваться калькулятором, оформите подписку на 30 дней за 299 ₽."
                 )
 
-        await message.answer(welcome_text, reply_markup=keyboard, parse_mode="HTML")
-
     except Exception as e:
         logger.exception(f"Ошибка при работе с таблицей subscriptions в Supabase для telegram_id={telegram_id}: {e}")
-        welcome_text = (
+        return (
             f"Привет, {first_name}! 👋\n\n"
-            "Добро пожаловать в Судебный & Исполнительный Помощник PRO.\n\n"
+            "Добро пожаловать в «Юридический помощник».\n\n"
             "Для работы нажмите кнопку ниже."
         )
-        await message.answer(welcome_text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@dp.message(CommandStart())
+async def command_start_handler(message: types.Message, command: CommandObject) -> None:
+    """
+    Обработчик команды /start:
+    1. Удаляет само сообщение команды /start пользователя (чистый чат).
+    2. Если бот ранее отправлял меню в этот чат — удаляет предыдущее сообщение.
+    3. При диплинке 'buy' (/start buy) отправляет инвойс на оплату.
+    4. Отправляет актуальное главное меню и сохраняет ID отправленного сообщения.
+    """
+    # 1. Удаление команды /start от пользователя
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    if command and command.args == "buy":
+        await send_subscription_invoice(message.chat.id)
+        return
+
+    # 2. Удаление предыдущего сообщения меню бота
+    last_id = last_menu_messages.get(message.chat.id)
+    if last_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=last_id)
+        except Exception:
+            pass
+
+    telegram_id = message.from_user.id
+    first_name = message.from_user.first_name or "Пользователь"
+    welcome_text = await get_start_text(telegram_id, first_name)
+    keyboard = get_start_keyboard()
+
+    sent_msg = await message.answer(welcome_text, reply_markup=keyboard, parse_mode="HTML")
+    if sent_msg and hasattr(sent_msg, "message_id"):
+        last_menu_messages[message.chat.id] = sent_msg.message_id
 
 
 @dp.callback_query(F.data == "bot_profile")
 async def process_profile_callback(callback_query: types.CallbackQuery) -> None:
     """
     Обработчик кнопки «👤 Профиль»
-    Запрашивает статус подписки из Supabase и отправляет данные пользователю.
+    Запрашивает статус подписки из Supabase и редактирует текущее сообщение (In-place Navigation).
     """
     await callback_query.answer()
     telegram_id = callback_query.from_user.id
@@ -252,46 +327,90 @@ async def process_profile_callback(callback_query: types.CallbackQuery) -> None:
         f"⏳ <b>Действует до:</b> {expires_str}"
     )
 
-    profile_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="💳 Оплатить подписку (299 ₽)",
-                    callback_data="buy_subscription"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="⚖️ Открыть Калькулятор",
-                    web_app=WebAppInfo(url=WEBAPP_URL)
-                )
-            ]
-        ]
+    if callback_query.message and hasattr(callback_query.message, "chat"):
+        last_menu_messages[callback_query.message.chat.id] = callback_query.message.message_id
+
+    try:
+        await callback_query.message.edit_text(
+            profile_text,
+            reply_markup=get_profile_keyboard(),
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest:
+        pass
+
+
+def get_terms_text() -> str:
+    """
+    Формирует структурированную сводку Политики конфиденциальности и Пользовательского соглашения.
+    """
+    support_contact = SUPPORT_BOT_USERNAME if SUPPORT_BOT_USERNAME else "urcalcsupport_bot"
+    return (
+        "📄 <b>Политика конфиденциальности и Пользовательское соглашение</b>\n"
+        "<i>Редакция от 15.09.2026 г.</i>\n\n"
+        "<b>1. Политика конфиденциальности:</b>\n"
+        "Политика конфиденциальности регулирует сбор (идентификаторы, технические данные, история взаимодействий), "
+        "использование для работы сервиса и защиту данных. Передача информации третьим лицам допустима только по закону, "
+        "для исполнения обязательств (платежные системы) или с согласия пользователя. Администрация не гарантирует абсолютную безопасность, "
+        "не несёт ответственности за утечки по вине третьих лиц, а также вправе менять условия без предварительного уведомления — "
+        "их принятие происходит при продолжении использования сервиса.\n\n"
+        "<b>2. Пользовательское соглашение:</b>\n"
+        "• <b>Характер услуг:</b> Сервис «Юридический помощник» предоставляет цифровые расчетные инструменты и информационные материалы "
+        "на условиях «AS IS» («как есть»).\n"
+        "• <b>Отказ от гарантий:</b> Все решения и расчеты применяются пользователем на свой риск. "
+        "Расчеты носят информационно-справочный характер.\n"
+        "• <b>Оплата и возврат:</b> Доступ предоставляется по подписке (299 ₽ / 30 дней). "
+        "Возврат средств после предоставления доступа не осуществляется, за исключением технической невозможности "
+        "оказания услуги, заявленной в поддержку в течение 24 часов.\n"
+        "• <b>Интеллектуальная собственность:</b> Запрещено копирование, парсинг и перепродажа материалов и алгоритмов сервиса.\n"
+        f"• <b>Контакты:</b> Обращения принимаются через бота поддержки @{support_contact}."
     )
-    await callback_query.message.answer(profile_text, parse_mode="HTML", reply_markup=profile_keyboard)
 
 
 @dp.callback_query(F.data == "bot_terms")
 async def process_terms_callback(callback_query: types.CallbackQuery) -> None:
     """
     Обработчик кнопки «📄 Условия»
-    Отправляет текст политики/условий сервиса.
+    Редактирует текущее сообщение, отображая условия сервиса (In-place Navigation).
     """
     await callback_query.answer()
-    support_contact = f"@{SUPPORT_BOT_USERNAME}" if SUPPORT_BOT_USERNAME else "службу поддержки"
-    terms_text = (
-        "📄 <b>Условия использования и политика сервиса</b>\n\n"
-        "1. <b>Назначение сервиса:</b> «Судебный & Исполнительный Помощник PRO» предоставляет специализированные "
-        "расчетные инструменты для судебных юристов, арбитражных управляющих и взыскателей.\n\n"
-        "2. <b>Пробный доступ:</b> Каждому новому пользователю при первой регистрации единоразово "
-        "начисляется бесплатный пробный доступ ко всем калькуляторам на 5 дней.\n\n"
-        "3. <b>Платная подписка:</b> Стоимость продления доступа составляет 299 ₽ на 30 дней. "
-        "Платежи обрабатываются безопасно через официальные провайдеры Telegram.\n\n"
-        "4. <b>Характер расчетов:</b> Все вычисления носят информационно-справочный характер. "
-        "Пользователь самостоятельно верифицирует данные с нормами процессуального права РФ перед подачей документов в суд или ФССП.\n\n"
-        f"5. <b>Техническая поддержка:</b> При вопросах или сбоях обращайтесь в {support_contact}."
-    )
-    await callback_query.message.answer(terms_text, parse_mode="HTML")
+    terms_text = get_terms_text()
+
+    if callback_query.message and hasattr(callback_query.message, "chat"):
+        last_menu_messages[callback_query.message.chat.id] = callback_query.message.message_id
+
+    try:
+        await callback_query.message.edit_text(
+            terms_text,
+            reply_markup=get_terms_keyboard(),
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest:
+        pass
+
+
+@dp.callback_query(F.data == "back_to_menu")
+async def process_back_to_menu_callback(callback_query: types.CallbackQuery) -> None:
+    """
+    Обработчик кнопки «« Назад в меню»
+    Редактирует текущее сообщение обратно в главное меню (In-place Navigation).
+    """
+    await callback_query.answer()
+    telegram_id = callback_query.from_user.id
+    first_name = callback_query.from_user.first_name or "Пользователь"
+    menu_text = await get_start_text(telegram_id, first_name)
+
+    if callback_query.message and hasattr(callback_query.message, "chat"):
+        last_menu_messages[callback_query.message.chat.id] = callback_query.message.message_id
+
+    try:
+        await callback_query.message.edit_text(
+            menu_text,
+            reply_markup=get_start_keyboard(),
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest:
+        pass
 
 
 

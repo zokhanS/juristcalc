@@ -161,7 +161,11 @@ async def lifespan(app: FastAPI):
 limiter = Limiter(key_func=get_remote_address)
 
 # Инициализация приложения FastAPI с lifespan
-app = FastAPI(title="Telegram WebApp Backend API", lifespan=lifespan)
+app = FastAPI(
+    title="Юридический помощник API",
+    description="API бэкенда для Telegram Mini App и бота «Юридический помощник»",
+    lifespan=lifespan
+)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
