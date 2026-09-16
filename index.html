@@ -1284,8 +1284,7 @@
                         <div style="display: flex; flex-direction: column; gap: 10px;">
                             <button class="btn btn-secondary" onclick="copyToClipboard('gp-report-text')">📋 Скопировать
                                 отчет в буфер</button>
-                            <button class="btn" onclick="generateWordHeader(); openModal('court-header-modal');">✍
-                                Открыть конструктор шапки иска</button>
+                            <button id="court-header-btn" class="btn" onclick="openCourtHeaderConstructor()">✍ Открыть конструктор шапки иска</button>
                         </div>
                     </div>
                 </div>
@@ -2099,7 +2098,25 @@
         const PAYMENT_URL = "https://t.me/JuristCalc_bot?start=buy";
         const PAID_TAB_IDS = ['tab-sr', 'tab-fin-calc', 'tab-ip-calc', 'tab-ip-dates', 'tab-bankruptcy'];
 
+        function openCourtHeaderConstructor() {
+            if (!isSubscribed) {
+                showSubscriptionModal(
+                    "Функция доступна в подписке",
+                    "Конструктор шапки иска для Word доступен пользователям с активной подпиской или в рамках 5-дневного пробного периода.",
+                    "Оформить подписку за 299 ₽"
+                );
+                return;
+            }
+            generateWordHeader();
+            openModal('court-header-modal');
+        }
+
         function applyFreemiumRestrictions() {
+            const headerBtn = document.getElementById('court-header-btn');
+            if (headerBtn) {
+                headerBtn.innerHTML = '🔒 Открыть конструктор шапки иска (В подписке)';
+            }
+
             PAID_TAB_IDS.forEach(tabId => {
                 const tab = document.getElementById(tabId);
                 if (!tab) return;
@@ -2124,6 +2141,11 @@
         }
 
         function removeFreemiumRestrictions() {
+            const headerBtn = document.getElementById('court-header-btn');
+            if (headerBtn) {
+                headerBtn.innerHTML = '✍ Открыть конструктор шапки иска';
+            }
+
             PAID_TAB_IDS.forEach(tabId => {
                 const tab = document.getElementById(tabId);
                 if (!tab) return;

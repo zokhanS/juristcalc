@@ -74,13 +74,18 @@ async def test_webapp_and_keyboard():
     # 4. Проверяем клавиатуру меню условий get_terms_keyboard
     terms_kb = bot.get_terms_keyboard()
     terms_rows = terms_kb.inline_keyboard
-    assert len(terms_rows) == 2, f"Ожидалось 2 ряда кнопок в меню условий, получено {len(terms_rows)}"
-    btn_telegraph = terms_rows[0][0]
-    assert "Открыть в Telegraph" in btn_telegraph.text
-    assert btn_telegraph.url == "https://telegra.ph/Polzovatelskoe-soglashenie--Politika-konfidencialnosti-09-15"
-    print(f"[CHECK] Меню условий: кнопка Telegraph '{btn_telegraph.text}' -> {btn_telegraph.url}")
+    assert len(terms_rows) == 3, f"Ожидалось 3 ряда кнопок в меню условий, получено {len(terms_rows)}"
+    btn_terms = terms_rows[0][0]
+    assert "Пользовательское соглашение" in btn_terms.text
+    assert btn_terms.url == bot.TELEGRAPH_TERMS_URL
+    print(f"[CHECK] Меню условий: кнопка Пользовательское соглашение '{btn_terms.text}' -> {btn_terms.url}")
 
-    btn_back = terms_rows[1][0]
+    btn_policy = terms_rows[1][0]
+    assert "Политика конфиденциальности" in btn_policy.text
+    assert btn_policy.url == bot.TELEGRAPH_POLICY_URL
+    print(f"[CHECK] Меню условий: кнопка Политика конфиденциальности '{btn_policy.text}' -> {btn_policy.url}")
+
+    btn_back = terms_rows[2][0]
     assert "Назад в меню" in btn_back.text
     assert btn_back.callback_data == "back_to_menu"
     print(f"[CHECK] Меню условий: кнопка «Назад в меню» проверена корректно.")
@@ -289,14 +294,16 @@ async def test_bot_callbacks():
         assert "Политика конфиденциальности и Пользовательское соглашение" in terms_text
         assert "Редакция от 15.09.2026 г." in terms_text
         assert "Юридический помощник" in terms_text
-        assert "Telegraph" in terms_text
+        assert "Instant View" in terms_text
         assert len(terms_text) < 4096, f"Текст условий превышает лимит Telegram: {len(terms_text)} символов"
         
         # Проверяем кнопки в меню условий
-        assert len(terms_markup.inline_keyboard) == 2
-        assert "Открыть в Telegraph" in terms_markup.inline_keyboard[0][0].text
+        assert len(terms_markup.inline_keyboard) == 3
+        assert "Пользовательское соглашение" in terms_markup.inline_keyboard[0][0].text
         assert terms_markup.inline_keyboard[0][0].url == bot.TELEGRAPH_TERMS_URL
-        assert terms_markup.inline_keyboard[1][0].callback_data == "back_to_menu"
+        assert "Политика конфиденциальности" in terms_markup.inline_keyboard[1][0].text
+        assert terms_markup.inline_keyboard[1][0].url == bot.TELEGRAPH_POLICY_URL
+        assert terms_markup.inline_keyboard[2][0].callback_data == "back_to_menu"
         print("[CHECK] Текст условий и кнопки Telegraph / Назад проверены успешно.")
 
         # 3. Проверяем back_to_menu
@@ -438,6 +445,8 @@ async def test_naming_and_legal_documents():
     assert "<title>Юридический помощник</title>" in html_content, "Тег title в index.html не обновлен!"
     assert "terms-btn" not in html_content, "Кнопка terms-btn должна быть удалена из index.html!"
     assert "terms-modal" not in html_content, "Модальное окно terms-modal должно быть удалено из index.html!"
+    assert 'id="court-header-btn"' in html_content, "Кнопка court-header-btn не найдена в index.html!"
+    assert "openCourtHeaderConstructor()" in html_content, "Функция openCourtHeaderConstructor не найдена в index.html!"
     assert "=== ЮРИДИЧЕСКИЙ ПОМОЩНИК: ОТЧЕТ ПО ГОСПОШЛИНЕ ===" in html_content, "Заголовок отчета по госпошлине не обновлен!"
     print("[CHECK] index.html: кнопка условий и модальное окно удалены, title и отчеты актуализированы.")
 

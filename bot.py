@@ -52,6 +52,7 @@ PAYMENT_URL = os.getenv("PAYMENT_URL", "https://t.me/JuristCalc_bot?start=buy")
 SUPPORT_BOT_USERNAME = os.getenv("SUPPORT_BOT_USERNAME", "").replace("@", "").strip()
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID", "").strip()
 TELEGRAPH_TERMS_URL = "https://telegra.ph/Polzovatelskoe-soglashenie--Politika-konfidencialnosti-09-15"
+TELEGRAPH_POLICY_URL = "https://telegra.ph/Politika-konfidencialnosti-09-16-70"
 
 
 def get_support_url() -> str:
@@ -138,15 +139,22 @@ def get_profile_keyboard() -> InlineKeyboardMarkup:
 def get_terms_keyboard() -> InlineKeyboardMarkup:
     """
     Формирует инлайн-клавиатуру меню условий:
-    Ряд 1: 📄 Открыть в Telegraph
-    Ряд 2: « Назад в меню
+    Ряд 1: 📄 Пользовательское соглашение
+    Ряд 2: 🔒 Политика конфиденциальности
+    Ряд 3: « Назад в меню
     """
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="📄 Открыть в Telegraph",
+                    text="📄 Пользовательское соглашение",
                     url=TELEGRAPH_TERMS_URL
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔒 Политика конфиденциальности",
+                    url=TELEGRAPH_POLICY_URL
                 )
             ],
             [
@@ -357,12 +365,13 @@ async def process_terms_callback(callback_query: types.CallbackQuery) -> None:
     # Всплывающее уведомление в интерфейсе Telegram
     await callback_query.answer("Вы открыли окно с политика/условия")
 
-    terms_info_text = (
+    terms_nav_text = (
         "📄 <b>Политика конфиденциальности и Пользовательское соглашение</b>\n"
         "<i>Редакция от 15.09.2026 г.</i>\n\n"
-        "Официальные тексты документов сервиса «Юридический помощник» доступны "
-        "для чтения в удобном формате статьи Telegraph Instant View.\n\n"
-        "Нажмите кнопку ниже, чтобы открыть соглашение:"
+        "Ознакомиться с официальными текстами документов сервиса «Юридический помощник» "
+        "вы можете по ссылкам ниже в формате Instant View:\n\n"
+        "• <b>Пользовательское соглашение</b> — условия предоставления услуг, правила подписки и возврата.\n"
+        "• <b>Политика конфиденциальности</b> — порядок сбора, обработки и защиты технических данных."
     )
 
     if callback_query.message and hasattr(callback_query.message, "chat"):
@@ -370,7 +379,7 @@ async def process_terms_callback(callback_query: types.CallbackQuery) -> None:
 
     try:
         await callback_query.message.edit_text(
-            terms_info_text,
+            terms_nav_text,
             reply_markup=get_terms_keyboard(),
             parse_mode="HTML"
         )
