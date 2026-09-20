@@ -12,6 +12,10 @@ from dotenv import load_dotenv
 # 1. Загружаем переменные окружения на самом верху до импорта bot.py
 load_dotenv(override=True)
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, HTTPException, Request, Header, Response
@@ -433,8 +437,10 @@ async def create_payment_endpoint(
     telegram_id = user_data["id"]
     try:
         payment_url = await create_platega_payment(telegram_id=telegram_id, amount=299.0)
+        print(f"[API] [OK] Ссылка на оплату для user {telegram_id} успешно создана: {payment_url}", flush=True)
         return {"payment_url": payment_url}
     except Exception as e:
+        print(f"[API] [ERROR] Ошибка формирования счета Platega для user {telegram_id}: {e}", flush=True)
         logger.exception(f"Ошибка формирования счета Platega для user {telegram_id}: {e}")
         raise HTTPException(status_code=502, detail=f"Ошибка платежного шлюза: {str(e)}")
 

@@ -533,11 +533,12 @@ async def test_platega_service_logic():
         
         assert req_headers.get("X-MerchantId") == dummy_merchant
         assert req_headers.get("X-Secret") == dummy_api_key
-        assert req_json.get("amount") == 299.0
+        assert req_json.get("amount") in (299, 299.0)
         assert req_json.get("currency") == "RUB"
         assert req_json.get("orderId", "").startswith("sub_999888_")
-        assert req_json.get("paymentMethod") == "sbp"
-        print("[CHECK] create_platega_payment: запрос сформирован по спецификации и ссылка получена.")
+        assert "paymentMethod" not in req_json or req_json.get("paymentMethod") is None
+        assert req_json.get("paymentDetails") == {"amount": 299, "currency": "RUB"}
+        print("[CHECK] create_platega_payment: запрос сформирован по универсальной спецификации (без жесткой привязки к СБП) и ссылка получена.")
 
     print("\n✅ ТЕСТ 7 УСПЕШНО ПРОЙДЕН!\n")
 
