@@ -17,18 +17,15 @@ logger = logging.getLogger(__name__)
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart, Command, CommandObject
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, LabeledPrice
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from aiogram.exceptions import TelegramBadRequest
 from supadns import create_smart_client
+from platega_service import create_platega_payment
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-PAYMASTER_TOKEN = os.getenv("PAYMASTER_PROVIDER_TOKEN")
 
 if not BOT_TOKEN:
     raise ValueError("Не задан BOT_TOKEN в файле .env")
-
-if not PAYMASTER_TOKEN:
-    raise ValueError("Не задан PAYMASTER_PROVIDER_TOKEN в файле .env")
 
 
 def get_supabase():
@@ -167,20 +164,39 @@ def get_terms_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-async def send_subscription_invoice(chat_id: int):
+async def send_platega_payment(chat_id: int, user_id: int) -> None:
     """
-    Отправляет Telegram-инвойс для оплаты подписки через Paymaster.
+    Генерирует ссылку на оплату через Platega.io и отправляет инлайн-сообщение пользователю.
     """
-    await bot.send_invoice(
-        chat_id=chat_id,
-        title="Подписка на «Юридический помощник»",
-        description="Полный доступ ко всем калькуляторам и функциям на 30 дней",
-        payload="sub_30_days",
-        provider_token=PAYMASTER_TOKEN,
-        currency="RUB",
-        prices=[LabeledPrice(label="Подписка на 30 дней", amount=29900)],
-        start_parameter="sub_30_days"
-    )
+    try:
+        payment_url = await create_platega_payment(telegram_id=user_id, amount=299.0, days=30)
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💳 Перейти к оплате 299 ₽", url=payment_url)],
+            [InlineKeyboardButton(text="« Назад в меню", callback_data="back_to_menu")]
+        ])
+        sent_msg = await bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "💳 <b>Оформление подписки на «Юридический помощник»</b>\n\n"
+                "• <b>Тариф:</b> Полный доступ на 30 дней\n"
+                "• <b>Стоимость:</b> 299 ₽\n"
+                "• <b>Способы оплаты:</b> Банковские карты (МИР, Visa, Mastercard), СБП\n\n"
+                "После подтверждения оплаты все разделы калькулятора откроются автоматически."
+            ),
+            reply_markup=kb,
+            parse_mode="HTML"
+        )
+        if sent_msg and hasattr(sent_msg, "message_id"):
+            last_menu_messages[chat_id] = sent_msg.message_id
+    except Exception as e:
+        logger.exception(f"Ошибка при формировании счета Platega для user_id={user_id}: {e}")
+        await bot.send_message(
+            chat_id=chat_id,
+            text="⚠️ Не удалось сформировать ссылку на оплату. Пожалуйста, попробуйте позже или обратитесь в поддержку.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="« Назад в меню", callback_data="back_to_menu")]
+            ])
+        )
 
 
 async def get_start_text(telegram_id: int, first_name: str) -> str:
@@ -280,7 +296,7 @@ async def command_start_handler(message: types.Message, command: CommandObject) 
         pass
 
     if command and command.args == "buy":
-        await send_subscription_invoice(message.chat.id)
+        await send_platega_payment(message.chat.id, message.from_user.id)
         return
 
     # 2. Удаление предыдущего сообщения меню бота
@@ -416,77 +432,71 @@ async def process_back_to_menu_callback(callback_query: types.CallbackQuery) -> 
 @dp.message(Command("buy"))
 async def command_buy_handler(message: types.Message) -> None:
     """
-    Обработчик команды /buy для вызова инвойса оплаты.
+    Обработчик команды /buy для генерации ссылки на оплату через Platega.io.
     """
-    await send_subscription_invoice(message.chat.id)
+    await send_platega_payment(message.chat.id, message.from_user.id)
 
 
 @dp.callback_query(F.data == "buy_subscription")
 async def process_buy_callback(callback_query: types.CallbackQuery) -> None:
     """
     Обработчик нажатия на инлайн-кнопку «💳 Оплатить подписку».
+    Генерирует ссылку через Platega.io и отправляет сообщение с кнопкой перехода к оплате.
     """
     await callback_query.answer()
-    await send_subscription_invoice(callback_query.message.chat.id)
-
-
-@dp.pre_checkout_query()
-async def pre_checkout_handler(pre_checkout_query: types.PreCheckoutQuery) -> None:
-    """
-    Подтверждение готовности принять платеж от пользователя.
-    """
-    await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
-
-
-@dp.message(F.successful_payment)
-async def successful_payment_handler(message: types.Message) -> None:
-    """
-    Обработчик успешной оплаты подписки.
-    Обновляет или создает запись о подписке в Supabase на +30 дней.
-    Сохраняет флаг trial_used: True.
-    """
-    telegram_id = message.from_user.id
-    now_utc = datetime.now(timezone.utc)
-    added_timedelta = timedelta(days=30)
-    
-    supabase = get_supabase()
-    if not supabase:
-        logging.error("Supabase клиент не инициализирован (отсутствуют SUPABASE_URL или SUPABASE_KEY).")
-        await message.answer("⚠️ Оплата прошла, но произошла ошибка при активации подписки. Обратитесь в поддержку.")
-        return
+    user_id = callback_query.from_user.id
+    chat_id = callback_query.message.chat.id if callback_query.message else user_id
 
     try:
-        response = supabase.table("subscriptions").select("subscription_until, trial_used").eq("telegram_id", telegram_id).execute()
-        data = response.data
-
-        if data and data[0].get("subscription_until"):
-            sub_until_str = data[0].get("subscription_until")
-            current_sub_until = datetime.fromisoformat(sub_until_str.replace("Z", "+00:00"))
-            if current_sub_until > now_utc:
-                new_sub_until = current_sub_until + added_timedelta
-            else:
-                new_sub_until = now_utc + added_timedelta
+        payment_url = await create_platega_payment(telegram_id=user_id, amount=299.0, days=30)
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💳 Перейти к оплате 299 ₽", url=payment_url)],
+            [InlineKeyboardButton(text="« Назад в меню", callback_data="back_to_menu")]
+        ])
+        payment_text = (
+            "💳 <b>Оформление подписки на «Юридический помощник»</b>\n\n"
+            "• <b>Тариф:</b> Полный доступ на 30 дней\n"
+            "• <b>Стоимость:</b> 299 ₽\n"
+            "• <b>Способы оплаты:</b> Банковские карты (МИР, Visa, Mastercard), СБП\n\n"
+            "После подтверждения оплаты все разделы калькулятора откроются автоматически."
+        )
+        if callback_query.message:
+            last_menu_messages[chat_id] = callback_query.message.message_id
+            try:
+                await callback_query.message.edit_text(
+                    payment_text,
+                    reply_markup=kb,
+                    parse_mode="HTML"
+                )
+            except TelegramBadRequest:
+                sent_msg = await bot.send_message(
+                    chat_id=chat_id,
+                    text=payment_text,
+                    reply_markup=kb,
+                    parse_mode="HTML"
+                )
+                if sent_msg and hasattr(sent_msg, "message_id"):
+                    last_menu_messages[chat_id] = sent_msg.message_id
         else:
-            new_sub_until = now_utc + added_timedelta
-
-        sub_until_iso = new_sub_until.isoformat()
-
-        if data:
-            supabase.table("subscriptions").update({
-                "subscription_until": sub_until_iso,
-                "trial_used": True
-            }).eq("telegram_id", telegram_id).execute()
-        else:
-            supabase.table("subscriptions").insert({
-                "telegram_id": telegram_id,
-                "subscription_until": sub_until_iso,
-                "trial_used": True
-            }).execute()
-
-        await message.answer("🎉 Оплата прошла успешно! Все вкладки калькулятора разблокированы.")
+            await bot.send_message(
+                chat_id=chat_id,
+                text=payment_text,
+                reply_markup=kb,
+                parse_mode="HTML"
+            )
     except Exception as e:
-        logging.exception("Ошибка при активации подписки в Supabase: %s", e)
-        await message.answer("⚠️ Оплата прошла, но произошла ошибка при активации подписки. Обратитесь в поддержку.")
+        logger.exception(f"Ошибка при создании счета Platega для user_id={user_id}: {e}")
+        error_text = "⚠️ Не удалось сформировать ссылку на оплату. Пожалуйста, попробуйте позже или обратитесь в поддержку."
+        err_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="« Назад в меню", callback_data="back_to_menu")]
+        ])
+        if callback_query.message:
+            try:
+                await callback_query.message.edit_text(error_text, reply_markup=err_kb)
+            except TelegramBadRequest:
+                await bot.send_message(chat_id=chat_id, text=error_text, reply_markup=err_kb)
+        else:
+            await bot.send_message(chat_id=chat_id, text=error_text, reply_markup=err_kb)
 
 
 async def main() -> None:

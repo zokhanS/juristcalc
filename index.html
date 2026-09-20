@@ -1852,7 +1852,7 @@
                 </div>
 
                 <div style="margin-top: 20px;">
-                    <button id="profile-subscribe-btn" class="btn" style="width: 100%; margin-bottom: 0;" onclick="openPaymentLink()">
+                    <button id="profile-subscribe-btn" class="btn" style="width: 100%; margin-bottom: 0;" onclick="openPaymentLink(this)">
                         💳 Продлить / Оформить подписку
                     </button>
                 </div>
@@ -2003,12 +2003,7 @@
                 btn.onmouseover = () => { btn.style.backgroundColor = 'var(--accent-red-hover)'; };
                 btn.onmouseout = () => { btn.style.backgroundColor = 'var(--accent-red)'; };
                 btn.onclick = () => {
-                    if (window.Telegram && window.Telegram.WebApp) {
-                        window.Telegram.WebApp.openTelegramLink("https://t.me/JuristCalc_bot?start=buy");
-                        window.Telegram.WebApp.close();
-                    } else {
-                        window.location.href = "https://t.me/JuristCalc_bot?start=buy";
-                    }
+                    openPaymentLink(btn);
                 };
                 modal.appendChild(btn);
             }
@@ -2085,17 +2080,56 @@
             }
         }
 
-        function openPaymentLink() {
-            const url = "https://t.me/JuristCalc_bot?start=buy";
-            if (window.Telegram?.WebApp?.openTelegramLink) {
-                window.Telegram.WebApp.openTelegramLink(url);
-            } else {
-                window.open(url, '_blank');
+        async function openPaymentLink(targetBtn) {
+            const btn = targetBtn || document.getElementById('profile-subscribe-btn');
+            const originalText = btn ? btn.innerText : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = '⏳ Создаем счет...';
+            }
+
+            try {
+                const initData = await getTelegramInitDataWithTimeout(3000);
+                if (!initData) {
+                    alert('Не удалось получить данные авторизации Telegram. Откройте приложение внутри Telegram-бота.');
+                    return;
+                }
+
+                const response = await fetch('/api/create-payment', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Telegram-Init-Data': initData
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Ошибка HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                if (data && data.payment_url) {
+                    const paymentUrl = data.payment_url;
+                    if (window.Telegram?.WebApp?.openLink) {
+                        window.Telegram.WebApp.openLink(paymentUrl);
+                    } else {
+                        window.open(paymentUrl, '_blank');
+                    }
+                } else {
+                    alert('Не удалось сформировать ссылку на оплату. Пожалуйста, попробуйте позже.');
+                }
+            } catch (err) {
+                console.error("Ошибка при создании счета Platega:", err);
+                alert("Произошла ошибка при обращении к платёжному шлюзу. Пожалуйста, обратитесь в поддержку.");
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = originalText || '💳 Продлить / Оформить подписку';
+                }
             }
         }
 
         let isSubscribed = false;
-        const PAYMENT_URL = "https://t.me/JuristCalc_bot?start=buy";
         const PAID_TAB_IDS = ['tab-sr', 'tab-fin-calc', 'tab-ip-calc', 'tab-ip-dates', 'tab-bankruptcy'];
 
         function openCourtHeaderConstructor() {

@@ -14,6 +14,8 @@ if sys.stderr.encoding != 'utf-8':
 
 load_dotenv(override=True)
 
+import httpx
+import platega_service
 import bot
 import support_bot
 import main
@@ -426,14 +428,13 @@ async def test_main_config_and_api():
 
 async def test_naming_and_legal_documents():
     print("=" * 60)
-    print("ТЕСТ 6: Проверка переименования сервиса и актуализации документов")
+    print("ТЕСТ 6: Проверка переименования сервиса и отсутствия устаревших интеграций")
     print("=" * 60)
 
     # 1. Проверка bot.py
     with open("bot.py", "r", encoding="utf-8") as f:
         bot_content = f.read()
     assert "Судебный & Исполнительный Помощник PRO" not in bot_content, "Старое название найдено в bot.py!"
-    assert "Судебный Помощник PRO" not in bot_content, "Старое название инвойса найдено в bot.py!"
     assert "Юридический помощник" in bot_content, "Новое название не найдено в bot.py!"
     print("[CHECK] bot.py: старые названия удалены, актуальное название присутствует.")
 
@@ -457,7 +458,200 @@ async def test_naming_and_legal_documents():
     assert "Юридический помощник" in main_content, "Новое название не найдено в main.py!"
     print("[CHECK] main.py: метаданные FastAPI обновлены.")
 
+    # 4. Проверка полного удаления Tome и Paymaster из рабочей кодовой базы
+    code_files_to_check = ["bot.py", "main.py", ".env.example", "platega_service.py"]
+    for filename in code_files_to_check:
+        with open(filename, "r", encoding="utf-8") as f:
+            content = f.read().lower()
+        assert "tome" not in content, f"Обнаружено упоминание 'tome' в {filename}!"
+        assert "paymaster" not in content, f"Обнаружено упоминание 'paymaster' в {filename}!"
+        assert "send_subscription_invoice" not in content, f"Обнаружена устаревшая функция send_subscription_invoice в {filename}!"
+        assert "labeledprice" not in content, f"Обнаружен LabeledPrice в {filename}!"
+    print("[CHECK] Кодовая база полностью очищена от следов Tome.ru и Paymaster.")
+
     print("\n✅ ТЕСТ 6 УСПЕШНО ПРОЙДЕН!\n")
+
+
+async def test_platega_service_logic():
+    print("=" * 60)
+    print("ТЕСТ 7: Проверка сервиса Platega (проверка подписи и генерация ссылки)")
+    print("=" * 60)
+
+    # Используем строго фиктивные тестовые ключи (безопасность!)
+    dummy_secret = "dummy_test_secret_key_0123456789abcdef"
+    dummy_merchant = "dummy_test_merchant_uuid"
+    dummy_api_key = "dummy_test_api_key_xyz"
+
+    mock_config = {
+        "merchant_id": dummy_merchant,
+        "api_key": dummy_api_key,
+        "secret_key": dummy_secret,
+        "api_url": "https://api.platega.io"
+    }
+
+    # 1. Проверка валидации цифровой подписи verify_platega_signature
+    test_body = b'{"status":"CONFIRMED","amount":299,"order_id":"sub_123_456"}'
+    
+    with patch("platega_service.get_platega_config", return_value=mock_config):
+        # 1A: Проверка валидной подписи в формате HEX
+        import hmac, hashlib, base64
+        valid_hex = hmac.new(dummy_secret.encode("utf-8"), test_body, hashlib.sha256).hexdigest()
+        assert platega_service.verify_platega_signature(test_body, valid_hex) is True
+        print("[CHECK] verify_platega_signature: валидный HEX принимается.")
+
+        # 1Б: Проверка валидной подписи в формате Base64
+        valid_b64 = base64.b64encode(hmac.new(dummy_secret.encode("utf-8"), test_body, hashlib.sha256).digest()).decode("utf-8")
+        assert platega_service.verify_platega_signature(test_body, valid_b64) is True
+        print("[CHECK] verify_platega_signature: валидный Base64 принимается.")
+
+        # 1В: Проверка прямого совпадения секрета (X-Secret)
+        assert platega_service.verify_platega_signature(test_body, dummy_secret) is True
+        print("[CHECK] verify_platega_signature: прямой секрет X-Secret принимается.")
+
+        # 1Г: Проверка некорректной подписи (должна отвергаться)
+        assert platega_service.verify_platega_signature(test_body, "fake_invalid_signature_hex") is False
+        assert platega_service.verify_platega_signature(test_body, "") is False
+        assert platega_service.verify_platega_signature(test_body, None) is False
+        print("[CHECK] verify_platega_signature: неверная подпись отклоняется.")
+
+    # 2. Проверка генерации ссылки create_platega_payment
+    mock_post_response = MagicMock()
+    mock_post_response.status_code = 200
+    mock_post_response.json.return_value = {
+        "redirect": "https://pay.platega.io/checkout/test_session_12345"
+    }
+
+    with patch("platega_service.get_platega_config", return_value=mock_config), \
+         patch("httpx.AsyncClient.post", AsyncMock(return_value=mock_post_response)) as mock_post:
+        payment_url = await platega_service.create_platega_payment(telegram_id=999888, amount=299.0, days=30)
+        assert payment_url == "https://pay.platega.io/checkout/test_session_12345"
+        
+        # Проверяем переданные заголовки и тело
+        call_kwargs = mock_post.call_args[1]
+        req_json = call_kwargs.get("json", {})
+        req_headers = call_kwargs.get("headers", {})
+        
+        assert req_json.get("merchant_id") == dummy_merchant
+        assert req_json.get("amount") == 299.0
+        assert req_json.get("currency") == "RUB"
+        assert "sub_999888_" in req_json.get("order_id", "")
+        assert req_headers.get("Authorization") == f"Bearer {dummy_api_key}"
+        assert req_headers.get("X-MerchantId") == dummy_merchant
+        print("[CHECK] create_platega_payment: запрос сформирован корректно и ссылка получена.")
+
+    print("\n✅ ТЕСТ 7 УСПЕШНО ПРОЙДЕН!\n")
+
+
+async def test_platega_fastapi_endpoints():
+    print("=" * 60)
+    print("ТЕСТ 8: Проверка эндпоинтов FastAPI (/api/create-payment и /api/webhook/platega)")
+    print("=" * 60)
+
+    dummy_secret = "dummy_test_secret_for_webhook_validation"
+    mock_config = {
+        "merchant_id": "dummy_merchant",
+        "api_key": "dummy_key",
+        "secret_key": dummy_secret,
+        "api_url": "https://api.platega.io"
+    }
+
+    # 1. Тестирование эндпоинта /api/create-payment
+    transport = httpx.ASGITransport(app=main.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1А: Запрос без заголовка initData -> 401
+        res_no_auth = await client.post("/api/create-payment")
+        assert res_no_auth.status_code == 401, f"Ожидался 401, получен {res_no_auth.status_code}"
+        print("[CHECK] /api/create-payment: запрос без X-Telegram-Init-Data возвращает 401.")
+
+        # 1Б: Запрос с валидным initData -> 200 и payment_url
+        with patch("main.verify_telegram_init_data", return_value={"id": 777666, "first_name": "Иван"}), \
+             patch("main.create_platega_payment", AsyncMock(return_value="https://pay.platega.io/test-order")):
+            res_auth = await client.post(
+                "/api/create-payment",
+                headers={"X-Telegram-Init-Data": "dummy_valid_init_data"}
+            )
+            assert res_auth.status_code == 200
+            json_res = res_auth.json()
+            assert json_res.get("payment_url") == "https://pay.platega.io/test-order"
+            print("[CHECK] /api/create-payment: успешное создание счета и возврат payment_url.")
+
+    # 2. Тестирование эндпоинта /api/webhook/platega
+    import hmac, hashlib
+    webhook_payload = {
+        "id": "trans_unique_test_1001",
+        "amount": 299.0,
+        "currency": "RUB",
+        "status": "CONFIRMED",
+        "payload": json.dumps({"telegram_id": 555444, "days": 30}),
+        "custom_data": {"telegram_id": 555444, "days": 30}
+    }
+    raw_body = json.dumps(webhook_payload).encode("utf-8")
+    valid_sig = hmac.new(dummy_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+
+    # Мок клиента Supabase и бота Telegram
+    mock_supabase = MagicMock()
+    mock_table = MagicMock()
+    mock_select = MagicMock()
+    mock_eq = MagicMock()
+    mock_update = MagicMock()
+    mock_insert = MagicMock()
+
+    mock_supabase.table.return_value = mock_table
+    mock_table.select.return_value = mock_select
+    mock_select.eq.return_value = mock_eq
+    mock_table.update.return_value = mock_update
+    mock_update.eq.return_value = mock_update
+    mock_table.insert.return_value = mock_insert
+
+    # 2А: Неверная подпись -> 403 Forbidden
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        with patch("platega_service.get_platega_config", return_value=mock_config):
+            res_bad_sig = await client.post(
+                "/api/webhook/platega",
+                content=raw_body,
+                headers={"X-Signature": "wrong_signature_123", "Content-Type": "application/json"}
+            )
+            assert res_bad_sig.status_code == 403
+            print("[CHECK] /api/webhook/platega: неверная подпись возвращает 403 Forbidden.")
+
+        # 2Б: Корректная подпись, статус CONFIRMED -> 200 OK + начисление в Supabase + уведомление в TG
+        mock_eq.execute.return_value = MagicMock(data=[])  # Новый пользователь
+        mock_insert.execute.return_value = MagicMock(data=[{}])
+
+        with patch("platega_service.get_platega_config", return_value=mock_config), \
+             patch("main.get_supabase", return_value=mock_supabase), \
+             patch.object(main.bot, "send_message", AsyncMock()) as mock_bot_send:
+            
+            res_valid = await client.post(
+                "/api/webhook/platega",
+                content=raw_body,
+                headers={"X-Signature": valid_sig, "Content-Type": "application/json"}
+            )
+            assert res_valid.status_code == 200
+            assert res_valid.json() == {"status": "ok"}
+            assert mock_table.insert.called, "Запись подписки должна быть вставлена в Supabase!"
+            assert mock_bot_send.called, "Бот должен отправить уведомление об успешной оплате!"
+            call_text = mock_bot_send.call_args[1].get("text", "")
+            assert "Оплата успешно получена" in call_text
+            assert "активна на 30 дней" in call_text
+            print("[CHECK] /api/webhook/platega: успешный платеж обработан, подписка продлена, уведомление отправлено.")
+
+        # 2В: Идемпотентность — повторная отправка того же платежа
+        with patch("platega_service.get_platega_config", return_value=mock_config), \
+             patch("main.get_supabase", return_value=mock_supabase), \
+             patch.object(main.bot, "send_message", AsyncMock()) as mock_bot_send2:
+            
+            res_repeat = await client.post(
+                "/api/webhook/platega",
+                content=raw_body,
+                headers={"X-Signature": valid_sig, "Content-Type": "application/json"}
+            )
+            assert res_repeat.status_code == 200
+            assert res_repeat.json().get("message") == "already processed"
+            assert not mock_bot_send2.called, "Повторное уведомление не должно отправляться при дубликате!"
+            print("[CHECK] /api/webhook/platega: повторный вебхук обработан идемпотентно (без дублирования).")
+
+    print("\n✅ ТЕСТ 8 УСПЕШНО ПРОЙДЕН!\n")
 
 
 async def main_test_suite():
@@ -467,8 +661,10 @@ async def main_test_suite():
     await test_support_bot_functionality()
     await test_main_config_and_api()
     await test_naming_and_legal_documents()
+    await test_platega_service_logic()
+    await test_platega_fastapi_endpoints()
     print("=" * 60)
-    print("🎉 ВСЕ 6 ТЕСТОВЫХ НАБОРОВ УСПЕШНО ПРОЙДЕНЫ!")
+    print("🎉 ВСЕ 8 ТЕСТОВЫХ НАБОРОВ УСПЕШНО ПРОЙДЕНЫ!")
     print("=" * 60)
 
 

@@ -21,15 +21,17 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from bot import bot, dp  # Импортируем бота из bot.py
+from platega_service import create_platega_payment, verify_platega_signature
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-TOME_SECRET_KEY = os.getenv("TOME_SECRET_KEY")
-PAYMASTER_PROVIDER_TOKEN = os.getenv("PAYMASTER_PROVIDER_TOKEN")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-if not all([SUPABASE_URL, SUPABASE_KEY, TOME_SECRET_KEY, PAYMASTER_PROVIDER_TOKEN, BOT_TOKEN]):
+if not all([SUPABASE_URL, SUPABASE_KEY, BOT_TOKEN]):
     raise ValueError("Не все обязательные переменные окружения заданы. Проверьте ваш .env файл.")
+
+# Набор обработанных идентификаторов платежей для предотвращения повторного начисления (идемпотентность)
+PROCESSED_PAYMENTS: set[str] = set()
 
 
 def get_supabase():
@@ -261,93 +263,181 @@ async def check_subscription(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/webhook/tome")
-@limiter.limit("30/minute")
-async def tome_webhook(request: Request, x_tome_signature: str = Header(None)):
+@app.post("/api/webhook/platega")
+@limiter.limit("60/minute")
+async def platega_webhook(
+    request: Request,
+    x_signature: str = Header(None, alias="X-Signature"),
+    x_secret: str = Header(None, alias="X-Secret")
+):
     """
-    Вебхук для получения оповещений об успешной оплате от Tome.ru.
+    Вебхук для приема уведомлений об оплате от платежного шлюза Platega.io.
     """
     raw_body = await request.body()
-    
-    # 1. Безопасная проверка сигнатуры / хэша
-    if not x_tome_signature:
-        raise HTTPException(status_code=400, detail="Missing signature header")
-        
-    expected_signature = hmac.new(
-        TOME_SECRET_KEY.encode('utf-8'),
-        raw_body,
-        hashlib.sha256
-    ).hexdigest()
-    
-    # Безопасное сравнение строк (защита от Timing Attacks)
-    if not hmac.compare_digest(expected_signature, x_tome_signature):
+    sig = x_signature or x_secret or request.headers.get("X-Signature") or request.headers.get("X-Secret")
+
+    # 1. Валидация цифровой подписи
+    if not sig or not verify_platega_signature(raw_body, sig):
         raise HTTPException(status_code=403, detail="Invalid signature")
-    
-    # 2. Извлечение данных из тела запроса
+
+    # 2. Парсинг JSON тела запроса
     try:
-        payload = await request.json()
-        raw_telegram_id = payload.get("telegram_id")
-        days = payload.get("days", 30)  # Период подписки в днях
+        payload = json.loads(raw_body.decode("utf-8"))
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON body")
-        
-    if raw_telegram_id is None:
+
+    # 3. Проверка успешного статуса платежа
+    status = str(payload.get("status", "")).upper()
+    if status not in ("CONFIRMED", "SUCCESS"):
+        return {"status": "ignored", "reason": f"Status '{status}' is not a successful payment state"}
+
+    # 4. Проверка идемпотентности
+    transaction_id = str(
+        payload.get("id") or 
+        payload.get("transactionId") or 
+        payload.get("order_id") or 
+        ""
+    ).strip()
+    if transaction_id and transaction_id in PROCESSED_PAYMENTS:
+        return {"status": "ok", "message": "already processed"}
+
+    # 5. Извлечение telegram_id и days
+    telegram_id = None
+    days = 30
+
+    # Вариант А: custom_data
+    custom_data = payload.get("custom_data")
+    if isinstance(custom_data, dict):
+        telegram_id = custom_data.get("telegram_id")
+        days = custom_data.get("days", days)
+    elif isinstance(custom_data, str):
+        try:
+            parsed_cd = json.loads(custom_data)
+            if isinstance(parsed_cd, dict):
+                telegram_id = parsed_cd.get("telegram_id")
+                days = parsed_cd.get("days", days)
+        except Exception:
+            pass
+
+    # Вариант Б: payload (вложенный json string или словарь)
+    if telegram_id is None and "payload" in payload:
+        raw_p = payload.get("payload")
+        if isinstance(raw_p, dict):
+            telegram_id = raw_p.get("telegram_id")
+            days = raw_p.get("days", days)
+        elif isinstance(raw_p, str):
+            try:
+                parsed_p = json.loads(raw_p)
+                if isinstance(parsed_p, dict):
+                    telegram_id = parsed_p.get("telegram_id")
+                    days = parsed_p.get("days", days)
+            except Exception:
+                pass
+
+    # Вариант В: metadata.userId
+    if telegram_id is None and "metadata" in payload:
+        meta = payload.get("metadata")
+        if isinstance(meta, dict) and "userId" in meta:
+            telegram_id = meta.get("userId")
+
+    # Вариант Г: корневой ключ telegram_id
+    if telegram_id is None and "telegram_id" in payload:
+        telegram_id = payload.get("telegram_id")
+
+    # Вариант Д: разбор из order_id ("sub_{telegram_id}_{timestamp}")
+    if telegram_id is None and "order_id" in payload:
+        parts = str(payload.get("order_id", "")).split("_")
+        if len(parts) >= 3 and parts[0] == "sub" and parts[1].isdigit():
+            telegram_id = int(parts[1])
+
+    if telegram_id is None:
         raise HTTPException(status_code=400, detail="telegram_id is required in payload")
 
     try:
-        telegram_id = int(raw_telegram_id)
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Invalid telegram_id: must be an integer")
-
-    try:
+        telegram_id = int(telegram_id)
         days = int(days)
     except (ValueError, TypeError):
-        days = 30
+        raise HTTPException(status_code=400, detail="Invalid telegram_id or days format")
 
     now_utc = datetime.now(timezone.utc)
     added_timedelta = timedelta(days=days)
 
+    # 6. Продление подписки в Supabase
     try:
         supabase = get_supabase()
-        # Ищем пользователя в БД
+        if not supabase:
+            raise RuntimeError("Supabase client is not initialized")
+
         response = supabase.table("subscriptions").select("subscription_until").eq("telegram_id", telegram_id).execute()
         data = response.data
 
         if data:
-            # Пользователь найден
             sub_until_str = data[0].get("subscription_until")
             if sub_until_str:
                 current_sub_until = datetime.fromisoformat(sub_until_str.replace("Z", "+00:00"))
-                
-                # Если подписка активна, прибавляем дни к дате окончания.
-                # Иначе прибавляем дни к текущему времени.
                 if current_sub_until > now_utc:
                     new_sub_until = current_sub_until + added_timedelta
                 else:
                     new_sub_until = now_utc + added_timedelta
             else:
                 new_sub_until = now_utc + added_timedelta
-                
-            # Обновляем существующую запись
+
             supabase.table("subscriptions").update({
                 "subscription_until": new_sub_until.isoformat(),
                 "trial_used": True
             }).eq("telegram_id", telegram_id).execute()
-            
         else:
-            # Пользователя нет, создаем новую запись
             new_sub_until = now_utc + added_timedelta
             supabase.table("subscriptions").insert({
                 "telegram_id": telegram_id,
                 "subscription_until": new_sub_until.isoformat(),
                 "trial_used": True
             }).execute()
-            
-        # Возвращаем статус 200 OK как ожидает большинство платежных систем
+
+        # 7. Отправка уведомления пользователю в Telegram
+        try:
+            await bot.send_message(
+                chat_id=telegram_id,
+                text="🎉 Оплата успешно получена! Ваша подписка на «Юридический помощник» активна на 30 дней."
+            )
+        except Exception as notify_err:
+            print(f"⚠️ Не удалось отправить уведомление пользователю {telegram_id}: {notify_err}")
+
+        # Фиксируем транзакцию для предотвращения повторной обработки
+        if transaction_id:
+            PROCESSED_PAYMENTS.add(transaction_id)
+
+        # 8. Ответ 200 OK
         return {"status": "ok"}
-        
+
     except Exception as e:
-         raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/create-payment")
+@limiter.limit("30/minute")
+async def create_payment_endpoint(
+    request: Request,
+    x_telegram_init_data: str = Header(None, alias="X-Telegram-Init-Data")
+):
+    """
+    Эндпоинт для MiniApp: валидирует initData и возвращает ссылку на оплату через Platega.io.
+    """
+    if not x_telegram_init_data:
+        raise HTTPException(status_code=401, detail="Отсутствует заголовок X-Telegram-Init-Data")
+
+    user_data = verify_telegram_init_data(x_telegram_init_data)
+    if not user_data or "id" not in user_data:
+        raise HTTPException(status_code=401, detail="Недействительная подпись Telegram initData")
+
+    telegram_id = user_data["id"]
+    try:
+        payment_url = await create_platega_payment(telegram_id=telegram_id, amount=299.0, days=30)
+        return {"payment_url": payment_url}
+    except Exception as e:
+        print(f"Ошибка при создании счета Platega для telegram_id={telegram_id}: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка при создании счета на оплату")
+
 
 
 @app.get("/")
