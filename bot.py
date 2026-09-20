@@ -43,9 +43,10 @@ dp = Dispatcher()
 # Хранилище ID последнего сообщения меню для каждого чата (chat_id -> message_id)
 last_menu_messages: dict[int, int] = {}
 
-# Чтение переменных окружения
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://217-199-253-99.sslip.io")
-PAYMENT_URL = os.getenv("PAYMENT_URL", "https://t.me/JuristCalc_bot?start=buy")
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://217-199-253-99.sslip.io").strip()
+if "github.com" in WEBAPP_URL:
+    WEBAPP_URL = "https://217-199-253-99.sslip.io"
+
 SUPPORT_BOT_USERNAME = os.getenv("SUPPORT_BOT_USERNAME", "").replace("@", "").strip()
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID", "").strip()
 TELEGRAPH_TERMS_URL = "https://telegra.ph/Polzovatelskoe-soglashenie--Politika-konfidencialnosti-09-15"

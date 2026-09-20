@@ -482,17 +482,17 @@ async def test_platega_service_logic():
     dummy_merchant = "dummy_test_merchant_uuid"
     dummy_api_key = "dummy_test_api_key_xyz"
 
-    mock_config = {
-        "merchant_id": dummy_merchant,
-        "api_key": dummy_api_key,
-        "secret_key": dummy_secret,
-        "api_url": "https://api.platega.io"
+    mock_env = {
+        "PLATEGA_MERCHANT_ID": dummy_merchant,
+        "PLATEGA_API_KEY": dummy_api_key,
+        "PLATEGA_SECRET_KEY": dummy_secret,
+        "PLATEGA_API_URL": "https://api.platega.io"
     }
 
     # 1. Проверка валидации цифровой подписи verify_platega_signature
     test_body = b'{"status":"CONFIRMED","amount":299,"order_id":"sub_123_456"}'
     
-    with patch("platega_service.get_platega_config", return_value=mock_config):
+    with patch.dict(os.environ, mock_env):
         # 1A: Проверка валидной подписи в формате HEX
         import hmac, hashlib, base64
         valid_hex = hmac.new(dummy_secret.encode("utf-8"), test_body, hashlib.sha256).hexdigest()
@@ -521,7 +521,7 @@ async def test_platega_service_logic():
         "redirect": "https://pay.platega.io/checkout/test_session_12345"
     }
 
-    with patch("platega_service.get_platega_config", return_value=mock_config), \
+    with patch.dict(os.environ, mock_env), \
          patch("httpx.AsyncClient.post", AsyncMock(return_value=mock_post_response)) as mock_post:
         payment_url = await platega_service.create_platega_payment(telegram_id=999888, amount=299.0, days=30)
         assert payment_url == "https://pay.platega.io/checkout/test_session_12345"
@@ -531,13 +531,13 @@ async def test_platega_service_logic():
         req_json = call_kwargs.get("json", {})
         req_headers = call_kwargs.get("headers", {})
         
-        assert req_json.get("merchant_id") == dummy_merchant
+        assert req_headers.get("X-MerchantId") == dummy_merchant
+        assert req_headers.get("X-Secret") == dummy_api_key
         assert req_json.get("amount") == 299.0
         assert req_json.get("currency") == "RUB"
-        assert "sub_999888_" in req_json.get("order_id", "")
-        assert req_headers.get("Authorization") == f"Bearer {dummy_api_key}"
-        assert req_headers.get("X-MerchantId") == dummy_merchant
-        print("[CHECK] create_platega_payment: запрос сформирован корректно и ссылка получена.")
+        assert req_json.get("orderId", "").startswith("sub_999888_")
+        assert req_json.get("paymentMethod") == "sbp"
+        print("[CHECK] create_platega_payment: запрос сформирован по спецификации и ссылка получена.")
 
     print("\n✅ ТЕСТ 7 УСПЕШНО ПРОЙДЕН!\n")
 
@@ -548,11 +548,11 @@ async def test_platega_fastapi_endpoints():
     print("=" * 60)
 
     dummy_secret = "dummy_test_secret_for_webhook_validation"
-    mock_config = {
-        "merchant_id": "dummy_merchant",
-        "api_key": "dummy_key",
-        "secret_key": dummy_secret,
-        "api_url": "https://api.platega.io"
+    mock_env = {
+        "PLATEGA_MERCHANT_ID": "dummy_merchant",
+        "PLATEGA_API_KEY": "dummy_key",
+        "PLATEGA_SECRET_KEY": dummy_secret,
+        "PLATEGA_API_URL": "https://api.platega.io"
     }
 
     # 1. Тестирование эндпоинта /api/create-payment
@@ -563,7 +563,17 @@ async def test_platega_fastapi_endpoints():
         assert res_no_auth.status_code == 401, f"Ожидался 401, получен {res_no_auth.status_code}"
         print("[CHECK] /api/create-payment: запрос без X-Telegram-Init-Data возвращает 401.")
 
-        # 1Б: Запрос с валидным initData -> 200 и payment_url
+        # 1Б: Запрос с недействительной сессией -> 401
+        with patch("main.verify_telegram_init_data", return_value=None):
+            res_invalid_auth = await client.post(
+                "/api/create-payment",
+                headers={"X-Telegram-Init-Data": "invalid_session_data"}
+            )
+            assert res_invalid_auth.status_code == 401
+            assert res_invalid_auth.json().get("detail") == "Недействительная сессия"
+            print("[CHECK] /api/create-payment: недействительная сессия возвращает 401.")
+
+        # 1В: Запрос с валидным initData -> 200 и payment_url
         with patch("main.verify_telegram_init_data", return_value={"id": 777666, "first_name": "Иван"}), \
              patch("main.create_platega_payment", AsyncMock(return_value="https://pay.platega.io/test-order")):
             res_auth = await client.post(
@@ -574,6 +584,17 @@ async def test_platega_fastapi_endpoints():
             json_res = res_auth.json()
             assert json_res.get("payment_url") == "https://pay.platega.io/test-order"
             print("[CHECK] /api/create-payment: успешное создание счета и возврат payment_url.")
+
+        # 1Г: Ошибка шлюза при создании счета -> 502 Bad Gateway
+        with patch("main.verify_telegram_init_data", return_value={"id": 777666, "first_name": "Иван"}), \
+             patch("main.create_platega_payment", AsyncMock(side_effect=RuntimeError("Connection timeout"))):
+            res_gateway_err = await client.post(
+                "/api/create-payment",
+                headers={"X-Telegram-Init-Data": "dummy_valid_init_data"}
+            )
+            assert res_gateway_err.status_code == 502
+            assert "Ошибка платежного шлюза" in res_gateway_err.json().get("detail", "")
+            print("[CHECK] /api/create-payment: сбой шлюза возвращает 502 с информативным описанием.")
 
     # 2. Тестирование эндпоинта /api/webhook/platega
     import hmac, hashlib
@@ -605,7 +626,7 @@ async def test_platega_fastapi_endpoints():
 
     # 2А: Неверная подпись -> 403 Forbidden
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        with patch("platega_service.get_platega_config", return_value=mock_config):
+        with patch.dict(os.environ, mock_env):
             res_bad_sig = await client.post(
                 "/api/webhook/platega",
                 content=raw_body,
@@ -618,7 +639,7 @@ async def test_platega_fastapi_endpoints():
         mock_eq.execute.return_value = MagicMock(data=[])  # Новый пользователь
         mock_insert.execute.return_value = MagicMock(data=[{}])
 
-        with patch("platega_service.get_platega_config", return_value=mock_config), \
+        with patch.dict(os.environ, mock_env), \
              patch("main.get_supabase", return_value=mock_supabase), \
              patch.object(main.bot, "send_message", AsyncMock()) as mock_bot_send:
             
@@ -637,7 +658,7 @@ async def test_platega_fastapi_endpoints():
             print("[CHECK] /api/webhook/platega: успешный платеж обработан, подписка продлена, уведомление отправлено.")
 
         # 2В: Идемпотентность — повторная отправка того же платежа
-        with patch("platega_service.get_platega_config", return_value=mock_config), \
+        with patch.dict(os.environ, mock_env), \
              patch("main.get_supabase", return_value=mock_supabase), \
              patch.object(main.bot, "send_message", AsyncMock()) as mock_bot_send2:
             

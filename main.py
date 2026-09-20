@@ -4,12 +4,15 @@ import hashlib
 import json
 import urllib.parse
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
 # 1. Загружаем переменные окружения на самом верху до импорта bot.py
 load_dotenv(override=True)
+
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, HTTPException, Request, Header, Response
 from fastapi.responses import FileResponse
@@ -420,23 +423,20 @@ async def create_payment_endpoint(
     request: Request,
     x_telegram_init_data: str = Header(None, alias="X-Telegram-Init-Data")
 ):
-    """
-    Эндпоинт для MiniApp: валидирует initData и возвращает ссылку на оплату через Platega.io.
-    """
     if not x_telegram_init_data:
-        raise HTTPException(status_code=401, detail="Отсутствует заголовок X-Telegram-Init-Data")
-
+        raise HTTPException(status_code=401, detail="Отсутствует заголовок авторизации")
+        
     user_data = verify_telegram_init_data(x_telegram_init_data)
     if not user_data or "id" not in user_data:
-        raise HTTPException(status_code=401, detail="Недействительная подпись Telegram initData")
+        raise HTTPException(status_code=401, detail="Недействительная сессия")
 
     telegram_id = user_data["id"]
     try:
-        payment_url = await create_platega_payment(telegram_id=telegram_id, amount=299.0, days=30)
+        payment_url = await create_platega_payment(telegram_id=telegram_id, amount=299.0)
         return {"payment_url": payment_url}
     except Exception as e:
-        print(f"Ошибка при создании счета Platega для telegram_id={telegram_id}: {e}")
-        raise HTTPException(status_code=500, detail="Ошибка при создании счета на оплату")
+        logger.exception(f"Ошибка формирования счета Platega для user {telegram_id}: {e}")
+        raise HTTPException(status_code=502, detail=f"Ошибка платежного шлюза: {str(e)}")
 
 
 
