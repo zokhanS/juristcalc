@@ -80,8 +80,8 @@ async def create_platega_payment(telegram_id: int, amount: float = 299.0, days: 
                 if response.status_code in (200, 201):
                     data = response.json()
                     payment_url = (
-                        data.get("redirect") or 
                         data.get("url") or 
+                        data.get("redirect") or 
                         data.get("payment_url") or 
                         data.get("checkout_url") or
                         (data.get("data") and isinstance(data["data"], dict) and data["data"].get("url")) or

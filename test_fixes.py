@@ -618,21 +618,34 @@ async def test_platega_fastapi_endpoints():
     # Мок клиента Supabase и бота Telegram
     mock_supabase = MagicMock()
     mock_table = MagicMock()
-    mock_select = MagicMock()
-    mock_eq = MagicMock()
-    mock_update = MagicMock()
-    mock_insert = MagicMock()
-    mock_upsert = MagicMock()
+    mock_sub_select = MagicMock()
+    mock_sub_eq = MagicMock()
+    mock_sub_upsert = MagicMock()
 
-    mock_supabase.table.return_value = mock_table
-    mock_table.select.return_value = mock_select
-    mock_select.eq.return_value = mock_eq
-    mock_table.update.return_value = mock_update
-    mock_update.eq.return_value = mock_update
-    mock_table.insert.return_value = mock_insert
-    mock_table.upsert.return_value = mock_upsert
-    mock_upsert.execute.return_value = MagicMock(data=[{}])
-    mock_eq.execute.return_value = MagicMock(data=[])
+    mock_table.select.return_value = mock_sub_select
+    mock_sub_select.eq.return_value = mock_sub_eq
+    mock_sub_eq.execute.return_value = MagicMock(data=[])
+    mock_table.upsert.return_value = mock_sub_upsert
+    mock_sub_upsert.execute.return_value = MagicMock(data=[{}])
+
+    mock_pay_table = MagicMock()
+    mock_pay_select = MagicMock()
+    mock_pay_eq = MagicMock()
+    mock_pay_insert = MagicMock()
+
+    mock_pay_table.select.return_value = mock_pay_select
+    mock_pay_select.eq.return_value = mock_pay_eq
+    mock_pay_eq.execute.return_value = MagicMock(data=[])
+    mock_pay_table.insert.return_value = mock_pay_insert
+    mock_pay_insert.execute.return_value = MagicMock(data=[{}])
+
+    def table_router(name):
+        if name == "payments":
+            return mock_pay_table
+        return mock_table
+
+    mock_supabase.table.side_effect = table_router
+    main.PROCESSED_PAYMENTS.clear()
 
     with patch.dict(os.environ, mock_env), \
          patch("main.get_supabase", return_value=mock_supabase), \
@@ -794,6 +807,35 @@ async def test_platega_fastapi_endpoints():
             new_until_str = mock_table.upsert.call_args[0][0]["subscription_until"]
             assert "2026-11-14" in new_until_str
             print("[CHECK] /api/webhook/platega: надежный парсинг даты подписки со смешанным форматом (пробел вместо T) работает корректно.")
+
+            # 2К: Защита от повторных начислений (Идемпотентность)
+            mock_table.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+            idem_tx_id = "platega_tx_test_idempotent_12345"
+            idem_payload = {
+                "id": idem_tx_id,
+                "status": "PAID",
+                "payload": "1439183990"
+            }
+            # Первичное начисление
+            res_idem_1 = await client.post(
+                "/api/webhook/platega",
+                json=idem_payload,
+                headers={"X-Secret": dummy_secret}
+            )
+            assert res_idem_1.status_code == 200
+            assert res_idem_1.json() == {"status": "ok"}
+
+            # Повторный запрос с тем же transaction_id -> Already processed
+            mock_table.upsert.reset_mock()
+            res_idem_2 = await client.post(
+                "/api/webhook/platega",
+                json=idem_payload,
+                headers={"X-Secret": dummy_secret}
+            )
+            assert res_idem_2.status_code == 200
+            assert res_idem_2.json().get("message") == "Already processed"
+            assert not mock_table.upsert.called, "Повторный вебхук не должен повторно продлевать подписку в БД!"
+            print("[CHECK] /api/webhook/platega: защита от повторных начислений (идемпотентность) подтверждена.")
 
     print("\n✅ ТЕСТ 8 УСПЕШНО ПРОЙДЕН!\n")
 

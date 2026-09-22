@@ -316,6 +316,17 @@ async def platega_webhook(request: Request):
             logger.info(f"[Platega Webhook] Пропуск статуса: {status}")
             return {"status": "ignored", "reason": f"Status {status} not actionable"}
 
+        # Идентификатор транзакции
+        transaction_id = str(
+            data.get("id") or 
+            data.get("transactionId") or 
+            data_nested.get("id") or 
+            data_nested.get("transactionId") or 
+            trans_nested.get("id") or 
+            payment_nested.get("id") or 
+            ""
+        ).strip()
+
         # Извлечение telegram_id со всеми возможными fallback
         telegram_id = None
         raw_payload = data.get("payload") or data_nested.get("payload")
@@ -338,11 +349,27 @@ async def platega_webhook(request: Request):
             logger.error(f"[Platega Webhook] Не удалось извлечь telegram_id из вебхука: {data}")
             return {"status": "error", "message": "telegram_id not found"}
 
-        days = 30
-        logger.info(f"[Platega Webhook] Начисление подписки на {days} дней для пользователя {telegram_id}")
-
         supabase = get_supabase()
         now_utc = datetime.now(timezone.utc)
+
+        # Защита от повторных начислений (Идемпотентность)
+        if transaction_id:
+            if transaction_id in PROCESSED_PAYMENTS:
+                logger.info(f"[Platega Webhook] Транзакция {transaction_id} уже обработана (in-memory).")
+                return {"status": "ok", "message": "Already processed"}
+
+            if supabase:
+                try:
+                    pay_res = supabase.table("payments").select("id").eq("payment_id", transaction_id).execute()
+                    if pay_res.data:
+                        PROCESSED_PAYMENTS.add(transaction_id)
+                        logger.info(f"[Platega Webhook] Транзакция {transaction_id} уже обработана (Supabase).")
+                        return {"status": "ok", "message": "Already processed"}
+                except Exception as pay_err:
+                    logger.debug(f"[Platega Webhook] Проверка таблицы payments: {pay_err}")
+
+        days = 30
+        logger.info(f"[Platega Webhook] Начисление подписки на {days} дней для пользователя {telegram_id}")
 
         # Проверяем текущую подписку
         res = supabase.table("subscriptions").select("subscription_until").eq("telegram_id", telegram_id).execute()
@@ -370,6 +397,20 @@ async def platega_webhook(request: Request):
             "subscription_until": new_sub_until,
             "trial_used": True
         }).execute()
+
+        # Фиксируем обработанный платеж для предотвращения дублей
+        if transaction_id:
+            PROCESSED_PAYMENTS.add(transaction_id)
+            if supabase:
+                try:
+                    supabase.table("payments").insert({
+                        "payment_id": transaction_id,
+                        "telegram_id": telegram_id,
+                        "amount": 299,
+                        "created_at": now_utc.isoformat()
+                    }).execute()
+                except Exception as insert_err:
+                    logger.debug(f"[Platega Webhook] Запись в таблицу payments пропущена: {insert_err}")
 
         # Отправляем сообщение в Telegram
         try:
