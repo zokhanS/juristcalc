@@ -248,8 +248,11 @@ async def check_subscription(
             }
             
         # Парсим дату (Supabase возвращает ISO строку)
-        # Заменяем 'Z' на '+00:00' для корректной работы fromisoformat
-        sub_until = datetime.fromisoformat(sub_until_str.replace("Z", "+00:00"))
+        # Заменяем 'Z' на '+00:00' и пробелы на 'T' для корректной работы fromisoformat
+        sub_str = str(sub_until_str).replace("Z", "+00:00").replace(" ", "T")
+        sub_until = datetime.fromisoformat(sub_str)
+        if sub_until.tzinfo is None:
+            sub_until = sub_until.replace(tzinfo=timezone.utc)
         
         # Сравниваем дату окончания с текущим временем
         if sub_until > now_utc:
@@ -297,9 +300,18 @@ async def platega_webhook(request: Request):
 
         data_nested = data.get("data") if isinstance(data.get("data"), dict) else {}
         custom_data_nested = data.get("custom_data") if isinstance(data.get("custom_data"), dict) else {}
+        trans_nested = data.get("transaction") if isinstance(data.get("transaction"), dict) else {}
+        payment_nested = data.get("payment") if isinstance(data.get("payment"), dict) else {}
 
-        # Проверка статуса
-        status = str(data.get("status") or data_nested.get("status", "")).upper()
+        # 1. Каскадный поиск статуса транзакции
+        raw_status = (
+            data.get("status") or 
+            data_nested.get("status") or 
+            trans_nested.get("status") or 
+            payment_nested.get("status") or 
+            ""
+        )
+        status = str(raw_status).strip().upper()
         if status not in ("CONFIRMED", "SUCCESS", "PAID", "COMPLETED"):
             logger.info(f"[Platega Webhook] Пропуск статуса: {status}")
             return {"status": "ignored", "reason": f"Status {status} not actionable"}
@@ -336,11 +348,16 @@ async def platega_webhook(request: Request):
         res = supabase.table("subscriptions").select("subscription_until").eq("telegram_id", telegram_id).execute()
         current_data = res.data
 
+        # 2. Надежный парсинг даты подписки из Supabase
         if current_data and current_data[0].get("subscription_until"):
+            sub_str = str(current_data[0]["subscription_until"]).replace("Z", "+00:00").replace(" ", "T")
             try:
-                sub_until_dt = datetime.fromisoformat(current_data[0]["subscription_until"].replace("Z", "+00:00"))
+                sub_until_dt = datetime.fromisoformat(sub_str)
+                if sub_until_dt.tzinfo is None:
+                    sub_until_dt = sub_until_dt.replace(tzinfo=timezone.utc)
                 base_dt = max(sub_until_dt, now_utc)
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Ошибка парсинга даты подписки '{sub_str}': {e}")
                 base_dt = now_utc
         else:
             base_dt = now_utc

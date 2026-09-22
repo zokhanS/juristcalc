@@ -1,5 +1,6 @@
 import os
 import time
+import json
 import logging
 import httpx
 import hmac
@@ -103,16 +104,23 @@ async def create_platega_payment(telegram_id: int, amount: float = 299.0, days: 
         raise RuntimeError(f"Platega API отклонил запрос: {last_error}")
 
 
-def verify_platega_signature(payload_bytes: bytes | str, signature_header: str) -> bool:
+def verify_platega_signature(
+    payload_bytes: bytes | str, 
+    signature_header: str, 
+    payload_field: str | None = None
+) -> bool:
     """
     Проверка подписи входящего Webhook от Platega.
-    Поддерживает SHA256 hex, base64 и совпадение с секретным ключом или API-ключом.
+    1. Если signature_header совпадает напрямую со значением PLATEGA_SECRET_KEY или PLATEGA_API_KEY — сразу True.
+    2. При HMAC проверке убирает префиксы sha256= и пробелы, проверяет совпадение в HEX (любой регистр) и Base64.
+    3. Проверяет хэш как от сырого тела (raw bytes), так и от строки payload.
     """
     if not signature_header:
         return False
 
-    if isinstance(payload_bytes, str):
-        payload_bytes = payload_bytes.encode("utf-8")
+    sig = str(signature_header.decode("utf-8") if isinstance(signature_header, bytes) else signature_header).strip()
+    if not sig:
+        return False
 
     secret_str = (
         os.getenv("PLATEGA_SECRET_KEY") or 
@@ -131,20 +139,43 @@ def verify_platega_signature(payload_bytes: bytes | str, signature_header: str) 
     if not candidates:
         return False
 
-    sig = str(signature_header).strip()
+    # 1. Прямое совпадение со значением секрета или API-ключа
+    for s in candidates:
+        if hmac.compare_digest(sig, s):
+            return True
+
+    # 2. Очистка от префикса sha256= и пробелов
     if sig.lower().startswith("sha256="):
         sig = sig[7:].strip()
 
+    # 3. Подготовка вариантов данных для проверки хэша (сырое тело + строковый параметр payload)
+    raw_bytes = payload_bytes.encode("utf-8") if isinstance(payload_bytes, str) else payload_bytes
+    byte_candidates: list[bytes] = [raw_bytes]
+
+    if payload_field:
+        byte_candidates.append(str(payload_field).encode("utf-8"))
+
+    try:
+        raw_text = raw_bytes.decode("utf-8")
+        parsed_json = json.loads(raw_text)
+        if isinstance(parsed_json, dict):
+            extracted = parsed_json.get("payload") or (parsed_json.get("data") if isinstance(parsed_json.get("data"), dict) else {}).get("payload")
+            if extracted is not None:
+                byte_candidates.append(str(extracted).encode("utf-8"))
+    except Exception:
+        pass
+
+    # 4. Проверка HMAC для каждого секрета и каждого варианта тела
     for s in candidates:
         secret_bytes = s.encode("utf-8")
-        expected_hex = hmac.new(secret_bytes, payload_bytes, hashlib.sha256).hexdigest()
-        expected_b64 = base64.b64encode(hmac.new(secret_bytes, payload_bytes, hashlib.sha256).digest()).decode("utf-8")
+        for b_data in byte_candidates:
+            expected_hex = hmac.new(secret_bytes, b_data, hashlib.sha256).hexdigest()
+            expected_b64 = base64.b64encode(hmac.new(secret_bytes, b_data, hashlib.sha256).digest()).decode("utf-8")
 
-        if (
-            hmac.compare_digest(sig.lower(), expected_hex.lower()) or 
-            hmac.compare_digest(sig, expected_b64) or
-            hmac.compare_digest(sig, s)
-        ):
-            return True
+            if (
+                hmac.compare_digest(sig.lower(), expected_hex.lower()) or 
+                hmac.compare_digest(sig, expected_b64)
+            ):
+                return True
 
     return False

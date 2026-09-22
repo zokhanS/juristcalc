@@ -504,11 +504,26 @@ async def test_platega_service_logic():
         assert platega_service.verify_platega_signature(test_body, valid_b64) is True
         print("[CHECK] verify_platega_signature: валидный Base64 принимается.")
 
-        # 1В: Проверка прямого совпадения секрета (X-Secret)
+        # 1В: Проверка прямого совпадения секрета (X-Secret) и API-ключа
         assert platega_service.verify_platega_signature(test_body, dummy_secret) is True
-        print("[CHECK] verify_platega_signature: прямой секрет X-Secret принимается.")
+        assert platega_service.verify_platega_signature(test_body, dummy_api_key) is True
+        print("[CHECK] verify_platega_signature: прямой секрет X-Secret и API-ключ принимаются.")
 
-        # 1Г: Проверка некорректной подписи (должна отвергаться)
+        # 1Г: Проверка префикса sha256= и регистра HEX (верхний и нижний регистр)
+        upper_hex = valid_hex.upper()
+        assert platega_service.verify_platega_signature(test_body, upper_hex) is True
+        assert platega_service.verify_platega_signature(test_body, f"sha256={valid_hex}") is True
+        assert platega_service.verify_platega_signature(test_body, f"SHA256= {upper_hex} ") is True
+        print("[CHECK] verify_platega_signature: префикс sha256= и регистр HEX обрабатываются корректно.")
+
+        # 1Д: Проверка хэша от строкового параметра payload (если Platega подписывает конкретный параметр)
+        payload_param = "1439183990"
+        sig_from_payload = hmac.new(dummy_secret.encode("utf-8"), payload_param.encode("utf-8"), hashlib.sha256).hexdigest()
+        body_with_payload_param = json.dumps({"payload": payload_param, "status": "PAID"}).encode("utf-8")
+        assert platega_service.verify_platega_signature(body_with_payload_param, sig_from_payload) is True
+        print("[CHECK] verify_platega_signature: хэш от параметра payload успешно проверен.")
+
+        # 1Е: Проверка некорректной подписи (должна отвергаться)
         assert platega_service.verify_platega_signature(test_body, "fake_invalid_signature_hex") is False
         assert platega_service.verify_platega_signature(test_body, "") is False
         assert platega_service.verify_platega_signature(test_body, None) is False
@@ -736,6 +751,49 @@ async def test_platega_fastapi_endpoints():
             assert res_no_id.status_code == 200
             assert res_no_id.json() == {"status": "error", "message": "telegram_id not found"}
             print("[CHECK] /api/webhook/platega: отсутствие telegram_id возвращает ошибку с описанием.")
+
+            # 2З: Каскадный поиск статуса (transaction.status и payment.status)
+            trans_status_payload = {
+                "transaction": {"status": "PAID"},
+                "payload": "1439183990"
+            }
+            res_trans_status = await client.post(
+                "/api/webhook/platega",
+                json=trans_status_payload,
+                headers={"X-Secret": dummy_secret}
+            )
+            assert res_trans_status.status_code == 200
+            assert res_trans_status.json() == {"status": "ok"}
+
+            payment_status_payload = {
+                "payment": {"status": "COMPLETED"},
+                "payload": "1439183990"
+            }
+            res_pay_status = await client.post(
+                "/api/webhook/platega",
+                json=payment_status_payload,
+                headers={"X-Secret": dummy_secret}
+            )
+            assert res_pay_status.status_code == 200
+            assert res_pay_status.json() == {"status": "ok"}
+            print("[CHECK] /api/webhook/platega: каскадный поиск статуса (transaction/payment) работает безошибочно.")
+
+            # 2И: Надежный парсинг даты из Supabase с пробелом вместо T и смещением часового пояса
+            mock_table.select.return_value.eq.return_value.execute.return_value = MagicMock(
+                data=[{"subscription_until": "2026-10-15 12:00:00+00:00"}]
+            )
+            mock_table.upsert.reset_mock()
+            res_date_test = await client.post(
+                "/api/webhook/platega",
+                json={"status": "CONFIRMED", "payload": "1439183990"},
+                headers={"X-Secret": dummy_secret}
+            )
+            assert res_date_test.status_code == 200
+            assert res_date_test.json() == {"status": "ok"}
+            assert mock_table.upsert.called
+            new_until_str = mock_table.upsert.call_args[0][0]["subscription_until"]
+            assert "2026-11-14" in new_until_str
+            print("[CHECK] /api/webhook/platega: надежный парсинг даты подписки со смешанным форматом (пробел вместо T) работает корректно.")
 
     print("\n✅ ТЕСТ 8 УСПЕШНО ПРОЙДЕН!\n")
 
