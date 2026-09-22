@@ -103,22 +103,48 @@ async def create_platega_payment(telegram_id: int, amount: float = 299.0, days: 
         raise RuntimeError(f"Platega API отклонил запрос: {last_error}")
 
 
-def verify_platega_signature(payload_bytes: bytes, signature_header: str) -> bool:
+def verify_platega_signature(payload_bytes: bytes | str, signature_header: str) -> bool:
     """
     Проверка подписи входящего Webhook от Platega.
-    Поддерживает SHA256 hex, base64 и совпадение с секретным ключом.
+    Поддерживает SHA256 hex, base64 и совпадение с секретным ключом или API-ключом.
     """
     if not signature_header:
         return False
-    secret_str = (os.getenv("PLATEGA_SECRET_KEY") or os.getenv("PLATEGA_API_KEY") or PLATEGA_SECRET_KEY or PLATEGA_API_KEY or "").strip()
-    if not secret_str:
-        return False
-    secret = secret_str.encode("utf-8")
-    expected_hex = hmac.new(secret, payload_bytes, hashlib.sha256).hexdigest()
-    expected_b64 = base64.b64encode(hmac.new(secret, payload_bytes, hashlib.sha256).digest()).decode("utf-8")
 
-    return (
-        hmac.compare_digest(signature_header.lower(), expected_hex.lower()) or 
-        hmac.compare_digest(signature_header, expected_b64) or
-        hmac.compare_digest(signature_header, secret_str)
-    )
+    if isinstance(payload_bytes, str):
+        payload_bytes = payload_bytes.encode("utf-8")
+
+    secret_str = (
+        os.getenv("PLATEGA_SECRET_KEY") or 
+        os.getenv("PLATEGA_API_KEY") or 
+        PLATEGA_SECRET_KEY or 
+        PLATEGA_API_KEY or 
+        ""
+    ).strip()
+    api_key_str = (
+        os.getenv("PLATEGA_API_KEY") or 
+        PLATEGA_API_KEY or 
+        ""
+    ).strip()
+
+    candidates = [s for s in dict.fromkeys([secret_str, api_key_str]) if s]
+    if not candidates:
+        return False
+
+    sig = str(signature_header).strip()
+    if sig.lower().startswith("sha256="):
+        sig = sig[7:].strip()
+
+    for s in candidates:
+        secret_bytes = s.encode("utf-8")
+        expected_hex = hmac.new(secret_bytes, payload_bytes, hashlib.sha256).hexdigest()
+        expected_b64 = base64.b64encode(hmac.new(secret_bytes, payload_bytes, hashlib.sha256).digest()).decode("utf-8")
+
+        if (
+            hmac.compare_digest(sig.lower(), expected_hex.lower()) or 
+            hmac.compare_digest(sig, expected_b64) or
+            hmac.compare_digest(sig, s)
+        ):
+            return True
+
+    return False

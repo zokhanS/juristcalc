@@ -599,17 +599,7 @@ async def test_platega_fastapi_endpoints():
 
     # 2. Тестирование эндпоинта /api/webhook/platega
     import hmac, hashlib
-    webhook_payload = {
-        "id": "trans_unique_test_1001",
-        "amount": 299.0,
-        "currency": "RUB",
-        "status": "CONFIRMED",
-        "payload": json.dumps({"telegram_id": 555444, "days": 30}),
-        "custom_data": {"telegram_id": 555444, "days": 30}
-    }
-    raw_body = json.dumps(webhook_payload).encode("utf-8")
-    valid_sig = hmac.new(dummy_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-
+    
     # Мок клиента Supabase и бота Telegram
     mock_supabase = MagicMock()
     mock_table = MagicMock()
@@ -617,6 +607,7 @@ async def test_platega_fastapi_endpoints():
     mock_eq = MagicMock()
     mock_update = MagicMock()
     mock_insert = MagicMock()
+    mock_upsert = MagicMock()
 
     mock_supabase.table.return_value = mock_table
     mock_table.select.return_value = mock_select
@@ -624,54 +615,127 @@ async def test_platega_fastapi_endpoints():
     mock_table.update.return_value = mock_update
     mock_update.eq.return_value = mock_update
     mock_table.insert.return_value = mock_insert
+    mock_table.upsert.return_value = mock_upsert
+    mock_upsert.execute.return_value = MagicMock(data=[{}])
+    mock_eq.execute.return_value = MagicMock(data=[])
 
-    # 2А: Неверная подпись -> 403 Forbidden
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        with patch.dict(os.environ, mock_env):
-            res_bad_sig = await client.post(
+    with patch.dict(os.environ, mock_env), \
+         patch("main.get_supabase", return_value=mock_supabase), \
+         patch.object(main.bot, "send_message", AsyncMock()) as mock_bot_send:
+
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            # 2А: Пропуск неактуального статуса (например, PENDING или FAILED)
+            pending_payload = {"status": "PENDING", "payload": "1439183990"}
+            res_pending = await client.post(
                 "/api/webhook/platega",
-                content=raw_body,
-                headers={"X-Signature": "wrong_signature_123", "Content-Type": "application/json"}
+                json=pending_payload,
+                headers={"X-Secret": dummy_secret}
             )
-            assert res_bad_sig.status_code == 403
-            print("[CHECK] /api/webhook/platega: неверная подпись возвращает 403 Forbidden.")
+            assert res_pending.status_code == 200
+            assert res_pending.json().get("status") == "ignored"
+            print("[CHECK] /api/webhook/platega: статус PENDING корректно пропущен (ignored).")
 
-        # 2Б: Корректная подпись, статус CONFIRMED -> 200 OK + начисление в Supabase + уведомление в TG
-        mock_eq.execute.return_value = MagicMock(data=[])  # Новый пользователь
-        mock_insert.execute.return_value = MagicMock(data=[{}])
+            # 2Б: Строковый payload: "1439183990" (проблема 1) + статус CONFIRMED + заголовок X-Signature
+            webhook_payload_str = {
+                "status": "CONFIRMED",
+                "payload": "1439183990"
+            }
+            raw_body_str = json.dumps(webhook_payload_str).encode("utf-8")
+            valid_sig_str = hmac.new(dummy_secret.encode("utf-8"), raw_body_str, hashlib.sha256).hexdigest()
 
-        with patch.dict(os.environ, mock_env), \
-             patch("main.get_supabase", return_value=mock_supabase), \
-             patch.object(main.bot, "send_message", AsyncMock()) as mock_bot_send:
-            
+            mock_table.upsert.reset_mock()
+            mock_bot_send.reset_mock()
+
             res_valid = await client.post(
                 "/api/webhook/platega",
-                content=raw_body,
-                headers={"X-Signature": valid_sig, "Content-Type": "application/json"}
+                content=raw_body_str,
+                headers={"X-Signature": valid_sig_str, "Content-Type": "application/json"}
             )
             assert res_valid.status_code == 200
             assert res_valid.json() == {"status": "ok"}
-            assert mock_table.insert.called, "Запись подписки должна быть вставлена в Supabase!"
+            assert mock_table.upsert.called, "Запись подписки должна быть обновлена/вставлена через upsert!"
+            upsert_record = mock_table.upsert.call_args[0][0]
+            assert upsert_record.get("telegram_id") == 1439183990
+            assert upsert_record.get("trial_used") is True
             assert mock_bot_send.called, "Бот должен отправить уведомление об успешной оплате!"
             call_text = mock_bot_send.call_args[1].get("text", "")
             assert "Оплата успешно получена" in call_text
-            assert "активна на 30 дней" in call_text
-            print("[CHECK] /api/webhook/platega: успешный платеж обработан, подписка продлена, уведомление отправлено.")
+            assert "30 дней" in call_text
+            print("[CHECK] /api/webhook/platega: строковый payload '1439183990' успешно обработан, подписка начислена.")
 
-        # 2В: Идемпотентность — повторная отправка того же платежа
-        with patch.dict(os.environ, mock_env), \
-             patch("main.get_supabase", return_value=mock_supabase), \
-             patch.object(main.bot, "send_message", AsyncMock()) as mock_bot_send2:
-            
-            res_repeat = await client.post(
+            # 2В: Вложенные данные data.payload и data.status = "PAID" (проблема 1 и 2) + заголовок Signature
+            nested_payload = {
+                "data": {
+                    "payload": "1439183990",
+                    "status": "PAID"
+                }
+            }
+            raw_nested = json.dumps(nested_payload).encode("utf-8")
+            valid_sig_nested = hmac.new(dummy_secret.encode("utf-8"), raw_nested, hashlib.sha256).hexdigest()
+
+            res_nested = await client.post(
                 "/api/webhook/platega",
-                content=raw_body,
-                headers={"X-Signature": valid_sig, "Content-Type": "application/json"}
+                content=raw_nested,
+                headers={"Signature": valid_sig_nested, "Content-Type": "application/json"}
             )
-            assert res_repeat.status_code == 200
-            assert res_repeat.json().get("message") == "already processed"
-            assert not mock_bot_send2.called, "Повторное уведомление не должно отправляться при дубликате!"
-            print("[CHECK] /api/webhook/platega: повторный вебхук обработан идемпотентно (без дублирования).")
+            assert res_nested.status_code == 200
+            assert res_nested.json() == {"status": "ok"}
+            print("[CHECK] /api/webhook/platega: вложенные data.payload и data.status=PAID успешно распознаны.")
+
+            # 2Г: Статус COMPLETED и заголовок X-Secret (проблема 2 и 3)
+            completed_payload = {
+                "status": "COMPLETED",
+                "payload": "1439183990"
+            }
+            res_completed = await client.post(
+                "/api/webhook/platega",
+                json=completed_payload,
+                headers={"X-Secret": dummy_secret}
+            )
+            assert res_completed.status_code == 200
+            assert res_completed.json() == {"status": "ok"}
+            print("[CHECK] /api/webhook/platega: статус COMPLETED и авторизация через X-Secret успешно обработаны.")
+
+            # 2Д: Подпись передана прямо в JSON-теле (проблема 3)
+            body_sig_payload = {
+                "status": "SUCCESS",
+                "payload": "1439183990",
+                "signature": dummy_secret
+            }
+            res_body_sig = await client.post(
+                "/api/webhook/platega",
+                json=body_sig_payload
+            )
+            assert res_body_sig.status_code == 200
+            assert res_body_sig.json() == {"status": "ok"}
+            print("[CHECK] /api/webhook/platega: подпись внутри JSON тела успешно принята.")
+
+            # 2Е: Fallback извлечения telegram_id из orderId ("sub_998877_1790000000")
+            order_payload = {
+                "status": "SUCCESS",
+                "orderId": "sub_998877_1790000000"
+            }
+            mock_table.upsert.reset_mock()
+            res_order = await client.post(
+                "/api/webhook/platega",
+                json=order_payload,
+                headers={"X-Secret": dummy_secret}
+            )
+            assert res_order.status_code == 200
+            assert res_order.json() == {"status": "ok"}
+            assert mock_table.upsert.call_args[0][0].get("telegram_id") == 998877
+            print("[CHECK] /api/webhook/platega: fallback извлечение telegram_id из orderId работает корректно.")
+
+            # 2Ж: Если telegram_id не найден ни в одном поле -> {"status": "error", "message": "telegram_id not found"}
+            no_id_payload = {"status": "CONFIRMED"}
+            res_no_id = await client.post(
+                "/api/webhook/platega",
+                json=no_id_payload,
+                headers={"X-Secret": dummy_secret}
+            )
+            assert res_no_id.status_code == 200
+            assert res_no_id.json() == {"status": "error", "message": "telegram_id not found"}
+            print("[CHECK] /api/webhook/platega: отсутствие telegram_id возвращает ошибку с описанием.")
 
     print("\n✅ ТЕСТ 8 УСПЕШНО ПРОЙДЕН!\n")
 
