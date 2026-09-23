@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Юридический помощник</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
     <style>
         /* Базовые переменные (Темная тема по умолчанию) */
         :root {
@@ -2074,7 +2074,7 @@
             const botUsername = (window.SUPPORT_BOT_USERNAME || "").replace(/^@/, '').trim();
             const supportUrl = botUsername ? `https://t.me/${botUsername}` : 'https://t.me/';
             if (window.Telegram?.WebApp?.openTelegramLink) {
-                window.Telegram.WebApp.openTelegramLink(supportUrl);
+                window.Telegram?.WebApp?.openTelegramLink?.(supportUrl);
             } else {
                 window.open(supportUrl, '_blank');
             }
@@ -2113,7 +2113,7 @@
                 if (data && data.payment_url) {
                     const paymentUrl = data.payment_url;
                     if (window.Telegram?.WebApp?.openLink) {
-                        window.Telegram.WebApp.openLink(paymentUrl);
+                        window.Telegram?.WebApp?.openLink?.(paymentUrl);
                     } else {
                         window.open(paymentUrl, '_blank');
                     }
@@ -2198,6 +2198,10 @@
             return new Promise((resolve) => {
                 const startTime = Date.now();
                 const check = () => {
+                    // Безопасный немедленный вызов ready() и expand() через опциональную цепочку
+                    window.Telegram?.WebApp?.ready?.();
+                    window.Telegram?.WebApp?.expand?.();
+
                     const initData = window.Telegram?.WebApp?.initData;
                     if (initData && initData.length > 0) {
                         resolve(initData);
@@ -2211,17 +2215,12 @@
             });
         }
 
-        window.addEventListener('DOMContentLoaded', async () => {
-            const tg = window.Telegram?.WebApp;
-            if (tg) {
-                tg.ready();
-                tg.expand();
-            }
+        // Ранняя немедленная инициализация SDK Telegram WebApp при загрузке скрипта
+        window.Telegram?.WebApp?.ready?.();
+        window.Telegram?.WebApp?.expand?.();
 
-            isSubscribed = false;
-            applyFreemiumRestrictions();
-            initializeApp();
-
+        // Фоновый асинхронный запрос к /api/check-subscription (не блокирует рендеринг интерфейса)
+        async function checkSubscriptionInBackground() {
             const initData = await getTelegramInitDataWithTimeout(3000);
 
             if (!initData) {
@@ -2266,6 +2265,20 @@
                 isSubscribed = false;
                 applyFreemiumRestrictions();
             }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            // 1. Безопасный немедленный вызов ready() и expand()
+            window.Telegram?.WebApp?.ready?.();
+            window.Telegram?.WebApp?.expand?.();
+
+            // 2. Мгновенный рендеринг базового интерфейса и бесплатных калькуляторов
+            isSubscribed = false;
+            applyFreemiumRestrictions();
+            initializeApp();
+
+            // 3. Фоновый неблокирующий запрос проверки подписки
+            checkSubscriptionInBackground();
         });
 
         function initializeApp() {

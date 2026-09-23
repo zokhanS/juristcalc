@@ -423,6 +423,22 @@ async def test_main_config_and_api():
     print(f"[CHECK] main.app.title = '{main.app.title}'")
     assert "Юридический помощник" in main.app.title, f"Ожидалось название с 'Юридический помощник', получено: {main.app.title}"
 
+    # 4. Проверяем GZipMiddleware и Cache-Control для статики
+    transport = httpx.ASGITransport(app=main.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        # Проверка корневого пути / с gzip
+        res_gzip = await client.get("/", headers={"Accept-Encoding": "gzip"})
+        assert res_gzip.status_code == 200
+        assert res_gzip.headers.get("content-encoding") == "gzip", "Ответ должен быть сжат через gzip!"
+        assert res_gzip.headers.get("cache-control") == "public, max-age=300", f"Ожидался cache-control 'public, max-age=300', получен '{res_gzip.headers.get('cache-control')}'"
+        print("[CHECK] GET /: отдает Content-Encoding: gzip и Cache-Control: public, max-age=300")
+
+        # Проверка /index.html
+        res_index = await client.get("/index.html")
+        assert res_index.status_code == 200
+        assert res_index.headers.get("cache-control") == "public, max-age=300"
+        print("[CHECK] GET /index.html: отдает Cache-Control: public, max-age=300")
+
     print("\n✅ ТЕСТ 5 УСПЕШНО ПРОЙДЕН!\n")
 
 
@@ -449,7 +465,10 @@ async def test_naming_and_legal_documents():
     assert 'id="court-header-btn"' in html_content, "Кнопка court-header-btn не найдена в index.html!"
     assert "openCourtHeaderConstructor()" in html_content, "Функция openCourtHeaderConstructor не найдена в index.html!"
     assert "=== ЮРИДИЧЕСКИЙ ПОМОЩНИК: ОТЧЕТ ПО ГОСПОШЛИНЕ ===" in html_content, "Заголовок отчета по госпошлине не обновлен!"
-    print("[CHECK] index.html: кнопка условий и модальное окно удалены, title и отчеты актуализированы.")
+    assert '<script src="https://telegram.org/js/telegram-web-app.js" defer></script>' in html_content, "Скрипт Telegram SDK должен содержать defer!"
+    assert "window.Telegram?.WebApp?.ready?.()" in html_content, "Безопасный вызов Telegram.WebApp.ready?.() не найден в index.html!"
+    assert "checkSubscriptionInBackground()" in html_content, "Вызов checkSubscriptionInBackground() не найден в index.html!"
+    print("[CHECK] index.html: кнопка условий и модальное окно удалены, title, defer и неблокирующая инициализация проверены.")
 
     # 3. Проверка main.py
     with open("main.py", "r", encoding="utf-8") as f:

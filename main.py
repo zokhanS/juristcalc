@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 from fastapi import FastAPI, HTTPException, Request, Header, Response
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from supadns import create_smart_client
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -185,6 +186,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Сжатие ответов (GZip) для ускорения передачи контента на мобильные устройства
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+
+@app.middleware("http")
+async def add_cache_control_headers(request: Request, call_next):
+    """
+    Устанавливает заголовки Cache-Control для статических файлов и страниц:
+    - Для корня / и index.html: public, max-age=300 (5 минут) для быстрой доставки обновлений
+    - Для остальных статических файлов (.js, .css, .html): public, max-age=3600 (1 час)
+    """
+    response = await call_next(request)
+    path = request.url.path.lower()
+    if response.status_code < 400:
+        if path == "/" or path == "/index.html" or path.endswith("/index.html"):
+            response.headers["Cache-Control"] = "public, max-age=300"
+        elif path.endswith((".js", ".css", ".html")):
+            response.headers["Cache-Control"] = "public, max-age=3600"
+    return response
 
 
 @app.get("/api/check-subscription")
