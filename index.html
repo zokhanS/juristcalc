@@ -1843,7 +1843,7 @@
                     </div>
                     <div class="profile-item">
                         <span class="profile-label">Статус подписки</span>
-                        <span id="profile-sub-status" class="profile-status-badge status-expired">Истекла или не оформлена</span>
+                        <span id="profile-sub-status" class="profile-status-badge status-expired">Не активна</span>
                     </div>
                     <div class="profile-item">
                         <span class="profile-label">Дата окончания</span>
@@ -2042,23 +2042,24 @@
             const sub = window.currentUserSubscription;
             if (sub) {
                 statusEl.className = 'profile-status-badge';
-                if (sub.active === true) {
-                    if (sub.is_trial === true) {
-                        statusEl.textContent = 'Пробный период 5 дней';
-                        statusEl.classList.add('status-trial');
-                    } else {
-                        statusEl.textContent = 'Активна';
-                        statusEl.classList.add('status-active');
-                    }
+                if (sub.plan_type === 'paid' || (sub.active && sub.trial_used)) {
+                    statusEl.textContent = 'Активна';
+                    statusEl.classList.remove('status-trial', 'status-expired');
+                    statusEl.classList.add('status-active');
+                } else if (sub.plan_type === 'trial' || (sub.active && !sub.trial_used)) {
+                    statusEl.textContent = 'Пробный период';
+                    statusEl.classList.remove('status-active', 'status-expired');
+                    statusEl.classList.add('status-trial');
                 } else {
-                    statusEl.textContent = 'Истекла или не оформлена';
+                    statusEl.textContent = 'Не активна';
+                    statusEl.classList.remove('status-active', 'status-trial');
                     statusEl.classList.add('status-expired');
                 }
 
                 expiryEl.textContent = sub.expires_at || '—';
             } else {
                 statusEl.className = 'profile-status-badge status-expired';
-                statusEl.textContent = 'Истекла или не оформлена';
+                statusEl.textContent = 'Не активна';
                 expiryEl.textContent = '—';
             }
         }
@@ -2225,7 +2226,7 @@
 
             if (!initData) {
                 console.warn("initData не получен (запуск вне Telegram или таймаут)");
-                window.currentUserSubscription = { active: false, is_trial: false, expires_at: null };
+                window.currentUserSubscription = { active: false, trial_used: false, plan_type: 'none', status_text: 'Не активна', expires_at: null };
                 applyFreemiumRestrictions();
                 updateProfileModalData();
                 return;
@@ -2260,7 +2261,7 @@
                 }
             } catch (err) {
                 console.error("Ошибка проверки подписки:", err);
-                window.currentUserSubscription = { active: false, is_trial: false, expires_at: null };
+                window.currentUserSubscription = { active: false, trial_used: false, plan_type: 'none', status_text: 'Не активна', expires_at: null };
                 updateProfileModalData();
                 isSubscribed = false;
                 applyFreemiumRestrictions();

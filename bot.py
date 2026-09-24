@@ -233,7 +233,7 @@ async def get_start_text(telegram_id: int, first_name: str) -> str:
             insert_payload = {
                 "telegram_id": telegram_id,
                 "subscription_until": trial_until.isoformat(),
-                "trial_used": True
+                "trial_used": False
             }
             logger.info(f"Вставка новой записи триала в Supabase: {insert_payload}")
             supabase.table("subscriptions").insert(insert_payload).execute()
@@ -318,6 +318,71 @@ async def command_start_handler(message: types.Message, command: CommandObject) 
         last_menu_messages[message.chat.id] = sent_msg.message_id
 
 
+async def get_profile_text(telegram_id: int, first_name: str) -> str:
+    """
+    Формирует текст профиля пользователя с актуальным статусом подписки.
+    """
+    first_name = html.escape(first_name or "Пользователь")
+    now_utc = datetime.now(timezone.utc)
+    supabase = get_supabase()
+
+    status_line = "🔴 Статус: <b>Не оформлена</b>"
+    expires_str = "—"
+
+    if supabase:
+        try:
+            response = supabase.table("subscriptions").select("subscription_until, trial_used").eq("telegram_id", telegram_id).execute()
+            data = response.data
+            if data and data[0].get("subscription_until"):
+                sub_str = str(data[0]["subscription_until"]).replace("Z", "+00:00").replace(" ", "T")
+                sub_until = datetime.fromisoformat(sub_str)
+                if sub_until.tzinfo is None:
+                    sub_until = sub_until.replace(tzinfo=timezone.utc)
+                trial_used = bool(data[0].get("trial_used", False))
+                expires_str = f"{sub_until.strftime('%d.%m.%Y %H:%M')} (UTC)"
+                if sub_until > now_utc:
+                    if trial_used:
+                        status_line = "🟢 Статус: <b>Подписка активна</b>"
+                    else:
+                        status_line = "🟡 Статус: <b>Пробный период</b>"
+                else:
+                    status_line = "🔴 Статус: <b>Срок действия истек</b>"
+            else:
+                status_line = "🔴 Статус: <b>Не оформлена</b>"
+        except Exception as e:
+            logger.error(f"Ошибка получения профиля из Supabase: {e}")
+            status_line = "⚠️ Статус: <b>Ошибка проверки</b>"
+
+    return (
+        f"👤 <b>Профиль пользователя</b>\n\n"
+        f"🆔 <b>Telegram ID:</b> <code>{telegram_id}</code>\n"
+        f"👤 <b>Имя:</b> {first_name}\n"
+        f"{status_line}\n"
+        f"⏳ <b>Действует до:</b> {expires_str}"
+    )
+
+
+@dp.message(Command("profile"))
+async def command_profile_handler(message: types.Message) -> None:
+    """
+    Обработчик команды /profile
+    """
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    telegram_id = message.from_user.id
+    first_name = message.from_user.first_name or "Пользователь"
+    profile_text = await get_profile_text(telegram_id, first_name)
+    sent_msg = await message.answer(
+        profile_text,
+        reply_markup=get_profile_keyboard(),
+        parse_mode="HTML"
+    )
+    if sent_msg and hasattr(sent_msg, "message_id"):
+        last_menu_messages[message.chat.id] = sent_msg.message_id
+
+
 @dp.callback_query(F.data == "bot_profile")
 async def process_profile_callback(callback_query: types.CallbackQuery) -> None:
     """
@@ -326,39 +391,8 @@ async def process_profile_callback(callback_query: types.CallbackQuery) -> None:
     """
     await callback_query.answer()
     telegram_id = callback_query.from_user.id
-    first_name = html.escape(callback_query.from_user.first_name or "Пользователь")
-    now_utc = datetime.now(timezone.utc)
-    supabase = get_supabase()
-
-    status_text = "Не оформлена"
-    expires_str = "—"
-
-    if supabase:
-        try:
-            response = supabase.table("subscriptions").select("subscription_until, trial_used").eq("telegram_id", telegram_id).execute()
-            data = response.data
-            if data and data[0].get("subscription_until"):
-                sub_str = data[0]["subscription_until"]
-                sub_until = datetime.fromisoformat(sub_str.replace("Z", "+00:00"))
-                is_trial = bool(data[0].get("trial_used", False))
-                expires_str = f"{sub_until.strftime('%d.%m.%Y %H:%M')} (UTC)"
-                if sub_until > now_utc:
-                    status_text = "🟢 Активна (пробный период 5 дней)" if is_trial else "🟢 Активна"
-                else:
-                    status_text = "🔴 Срок действия истек"
-            else:
-                status_text = "🔴 Не оформлена"
-        except Exception as e:
-            logger.error(f"Ошибка получения профиля из Supabase: {e}")
-            status_text = "⚠️ Ошибка проверки"
-
-    profile_text = (
-        f"👤 <b>Профиль пользователя</b>\n\n"
-        f"🆔 <b>Telegram ID:</b> <code>{telegram_id}</code>\n"
-        f"👤 <b>Имя:</b> {first_name}\n"
-        f"📊 <b>Статус доступа:</b> {status_text}\n"
-        f"⏳ <b>Действует до:</b> {expires_str}"
-    )
+    first_name = callback_query.from_user.first_name or "Пользователь"
+    profile_text = await get_profile_text(telegram_id, first_name)
 
     if callback_query.message and hasattr(callback_query.message, "chat"):
         last_menu_messages[callback_query.message.chat.id] = callback_query.message.message_id

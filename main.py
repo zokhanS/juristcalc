@@ -180,15 +180,26 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Настройка CORS
+allowed_origins = [
+    "https://t.me",
+    "https://web.telegram.org",
+    os.getenv("WEBAPP_URL", "").rstrip("/")
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Разрешаем запросы с любых доменов
-    allow_methods=["*"],
+    allow_origins=[origin for origin in allowed_origins if origin],
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
 # Сжатие ответов (GZip) для ускорения передачи контента на мобильные устройства
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
 
 
 @app.middleware("http")
@@ -236,8 +247,10 @@ async def check_subscription(
 
     try:
         supabase = get_supabase()
-        response = supabase.table("subscriptions").select("subscription_until, trial_used").eq("telegram_id", telegram_id).execute()
-        data = response.data
+        if not supabase:
+            raise RuntimeError("Supabase client is not available")
+        db_res = supabase.table("subscriptions").select("subscription_until, trial_used").eq("telegram_id", telegram_id).execute()
+        data = db_res.data
         now_utc = datetime.now(timezone.utc)
         
         # Если записи о пользователе нет в БД (первый вход)
@@ -246,12 +259,14 @@ async def check_subscription(
             supabase.table("subscriptions").insert({
                 "telegram_id": telegram_id,
                 "subscription_until": trial_until.isoformat(),
-                "trial_used": True
+                "trial_used": False
             }).execute()
             return {
                 "active": True,
-                "is_trial": True,
                 "expires_at": trial_until.strftime("%Y-%m-%d %H:%M"),
+                "trial_used": False,
+                "status_text": "Пробный период",
+                "plan_type": "trial",
                 "support_bot_username": SUPPORT_BOT_USERNAME
             }
             
@@ -263,8 +278,10 @@ async def check_subscription(
         if not sub_until_str:
             return {
                 "active": False,
-                "is_trial": False,
                 "expires_at": None,
+                "trial_used": trial_used,
+                "status_text": "Истекла",
+                "plan_type": "none",
                 "support_bot_username": SUPPORT_BOT_USERNAME
             }
             
@@ -275,23 +292,20 @@ async def check_subscription(
         if sub_until.tzinfo is None:
             sub_until = sub_until.replace(tzinfo=timezone.utc)
         
-        # Сравниваем дату окончания с текущим временем
-        if sub_until > now_utc:
-            return {
-                "active": True,
-                "is_trial": trial_used,
-                "expires_at": sub_until.strftime("%Y-%m-%d %H:%M"),
-                "support_bot_username": SUPPORT_BOT_USERNAME
-            }
-        else:
-            return {
-                "active": False,
-                "is_trial": False,
-                "expires_at": sub_until.strftime("%Y-%m-%d %H:%M"),
-                "support_bot_username": SUPPORT_BOT_USERNAME
-            }
+        is_active = sub_until > now_utc
+        return {
+            "active": is_active,
+            "expires_at": sub_until.strftime("%Y-%m-%d %H:%M"),
+            "trial_used": trial_used,
+            "status_text": "Активна" if (is_active and trial_used) else ("Пробный период" if is_active else "Истекла"),
+            "plan_type": "paid" if (is_active and trial_used) else ("trial" if is_active else "none"),
+            "support_bot_username": SUPPORT_BOT_USERNAME
+        }
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"Ошибка проверки подписки: {e}")
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
 
 
 @app.post("/api/webhook/platega")
@@ -302,22 +316,27 @@ async def platega_webhook(request: Request):
         signature = (
             request.headers.get("X-Signature") or 
             request.headers.get("Signature") or 
+            ""
+        )
+        secret_header = (
             request.headers.get("X-Secret") or 
             ""
         )
 
-        data = await request.json()
+        try:
+            data = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+        except Exception:
+            data = {}
         logger.info(f"[Platega Webhook] Получены данные: {data}, Headers: {dict(request.headers)}")
 
         # Если подпись передана внутри JSON
-        if not signature and "signature" in data:
+        if not signature and isinstance(data, dict) and "signature" in data:
             signature = str(data["signature"])
 
-        # Валидация подписи (если секрет задан)
-        if not verify_platega_signature(raw_body, signature):
-            logger.warning(f"[Platega Webhook] Неверная подпись: signature={signature}")
-            # Не падаем сразу, если в DEV/логах передан верный Secret в теле
-            # но в продакшене отдаем 403 при строгом несоответствии
+        # Валидация подписи (если не прошла — немедленный отказ 403)
+        if not verify_platega_signature(raw_body, signature_header=signature, secret_header=secret_header):
+            logger.warning("[Platega Webhook] Отклонен запрос с неверной подписью")
+            raise HTTPException(status_code=403, detail="Invalid signature")
 
         data_nested = data.get("data") if isinstance(data.get("data"), dict) else {}
         custom_data_nested = data.get("custom_data") if isinstance(data.get("custom_data"), dict) else {}
@@ -450,6 +469,8 @@ async def platega_webhook(request: Request):
 
         return {"status": "ok"}
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"Критическая ошибка обработки вебхука Platega: {e}")
         return {"status": "error", "detail": str(e)}
@@ -473,10 +494,12 @@ async def create_payment_endpoint(
         payment_url = await create_platega_payment(telegram_id=telegram_id, amount=299.0)
         print(f"[API] [OK] Ссылка на оплату для user {telegram_id} успешно создана: {payment_url}", flush=True)
         return {"payment_url": payment_url}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[API] [ERROR] Ошибка формирования счета Platega для user {telegram_id}: {e}", flush=True)
         logger.exception(f"Ошибка формирования счета Platega для user {telegram_id}: {e}")
-        raise HTTPException(status_code=502, detail=f"Ошибка платежного шлюза: {str(e)}")
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
 
 
 

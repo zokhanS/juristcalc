@@ -106,27 +106,18 @@ async def create_platega_payment(telegram_id: int, amount: float = 299.0, days: 
 
 def verify_platega_signature(
     payload_bytes: bytes | str, 
-    signature_header: str, 
-    payload_field: str | None = None
+    signature_header: str | None = None, 
+    secret_header: str | None = None
 ) -> bool:
     """
     Проверка подписи входящего Webhook от Platega.
-    1. Если signature_header совпадает напрямую со значением PLATEGA_SECRET_KEY или PLATEGA_API_KEY — сразу True.
-    2. При HMAC проверке убирает префиксы sha256= и пробелы, проверяет совпадение в HEX (любой регистр) и Base64.
-    3. Проверяет хэш как от сырого тела (raw bytes), так и от строки payload.
+    1. Если secret_header передан и совпадает с PLATEGA_SECRET_KEY или PLATEGA_API_KEY через hmac.compare_digest — возвращает True.
+    2. Если передан signature_header: очищает от sha256= и пробелов. Проверяет HMAC-SHA256 хеш от payload_bytes с секретом мерчанта (HEX регистронезависимо и Base64).
+    3. Если ничего не подошло — возвращает False.
     """
-    if not signature_header:
-        return False
-
-    sig = str(signature_header.decode("utf-8") if isinstance(signature_header, bytes) else signature_header).strip()
-    if not sig:
-        return False
-
     secret_str = (
         os.getenv("PLATEGA_SECRET_KEY") or 
-        os.getenv("PLATEGA_API_KEY") or 
         PLATEGA_SECRET_KEY or 
-        PLATEGA_API_KEY or 
         ""
     ).strip()
     api_key_str = (
@@ -139,7 +130,23 @@ def verify_platega_signature(
     if not candidates:
         return False
 
-    # 1. Прямое совпадение со значением секрета или API-ключа
+    # 1. Проверка secret_header (X-Secret)
+    if secret_header:
+        sec = str(secret_header.decode("utf-8") if isinstance(secret_header, bytes) else secret_header).strip()
+        if sec:
+            for s in candidates:
+                if hmac.compare_digest(sec, s):
+                    return True
+
+    # Если signature_header не передан или пустой
+    if not signature_header:
+        return False
+
+    sig = str(signature_header.decode("utf-8") if isinstance(signature_header, bytes) else signature_header).strip()
+    if not sig:
+        return False
+
+    # Прямое совпадение signature_header со значением секрета или API-ключа
     for s in candidates:
         if hmac.compare_digest(sig, s):
             return True
@@ -151,9 +158,6 @@ def verify_platega_signature(
     # 3. Подготовка вариантов данных для проверки хэша (сырое тело + строковый параметр payload)
     raw_bytes = payload_bytes.encode("utf-8") if isinstance(payload_bytes, str) else payload_bytes
     byte_candidates: list[bytes] = [raw_bytes]
-
-    if payload_field:
-        byte_candidates.append(str(payload_field).encode("utf-8"))
 
     try:
         raw_text = raw_bytes.decode("utf-8")

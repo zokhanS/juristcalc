@@ -14,6 +14,21 @@ if sys.stderr.encoding != 'utf-8':
 
 load_dotenv(override=True)
 
+from contextlib import contextmanager
+
+@contextmanager
+def patch_env(new_vars):
+    old_values = {k: os.environ.get(k) for k in new_vars}
+    os.environ.update(new_vars)
+    try:
+        yield
+    finally:
+        for k, v in old_values.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
 import httpx
 import platega_service
 import bot
@@ -165,7 +180,7 @@ async def test_supabase_start_scenarios():
         inserted_payload = mock_table.insert.call_args[0][0]
         print(f"[CHECK] Переданные данные в insert: {inserted_payload}")
         assert inserted_payload["telegram_id"] == test_user_id
-        assert inserted_payload["trial_used"] is True
+        assert inserted_payload["trial_used"] is False
 
         call_args = mock_message.answer.call_args
         msg_text = call_args[0][0]
@@ -270,13 +285,39 @@ async def test_bot_callbacks():
         print(f"[CHECK] Ответ на callback bot_profile (edit_text):\n{profile_text}")
         assert str(test_user_id) in profile_text
         assert "Елена" in profile_text
-        assert "Активна" in profile_text
+        assert "🟢 Статус: <b>Подписка активна</b>" in profile_text
+        assert "Подписка активна" in profile_text
         assert future_date.strftime("%d.%m.%Y %H:%M") in profile_text
         
         # Проверяем наличие кнопки «Назад в меню»
         back_btns = [btn for row in reply_markup.inline_keyboard for btn in row if btn.callback_data == "back_to_menu"]
         assert len(back_btns) == 1, "В меню профиля должна быть кнопка «Назад в меню»"
         print("[CHECK] Кнопка «« Назад в меню» присутствует в клавиатуре профиля.")
+
+        # 1Б. Проверяем bot_profile для пользователя на пробном периоде (trial_used: False)
+        mock_eq.execute.return_value = MagicMock(data=[{
+            "telegram_id": test_user_id,
+            "subscription_until": future_date.isoformat(),
+            "trial_used": False
+        }])
+        await bot.process_profile_callback(mock_cb)
+        trial_profile_text = mock_cb.message.edit_text.call_args[0][0]
+        assert "🟡 Статус: <b>Пробный период</b>" in trial_profile_text
+        assert "🟢 Статус: <b>Подписка активна</b>" not in trial_profile_text
+        print("[CHECK] Меню профиля: для trial_used=False отображается 'Пробный период'.")
+
+        # 1В. Проверяем команду /profile
+        mock_cmd_msg = AsyncMock()
+        mock_cmd_msg.from_user.id = test_user_id
+        mock_cmd_msg.from_user.first_name = "Елена"
+        mock_cmd_msg.chat.id = test_user_id
+        mock_cmd_msg.answer = AsyncMock()
+        mock_cmd_msg.delete = AsyncMock()
+        await bot.command_profile_handler(mock_cmd_msg)
+        assert mock_cmd_msg.answer.called
+        cmd_profile_text = mock_cmd_msg.answer.call_args[0][0]
+        assert "Пробный период" in cmd_profile_text
+        print("[CHECK] Команда /profile работает корректно.")
 
         # 2. Проверяем bot_terms
         mock_cb.reset_mock()
@@ -511,7 +552,7 @@ async def test_platega_service_logic():
     # 1. Проверка валидации цифровой подписи verify_platega_signature
     test_body = b'{"status":"CONFIRMED","amount":299,"order_id":"sub_123_456"}'
     
-    with patch.dict(os.environ, mock_env):
+    with patch_env(mock_env):
         # 1A: Проверка валидной подписи в формате HEX
         import hmac, hashlib, base64
         valid_hex = hmac.new(dummy_secret.encode("utf-8"), test_body, hashlib.sha256).hexdigest()
@@ -548,6 +589,13 @@ async def test_platega_service_logic():
         assert platega_service.verify_platega_signature(test_body, None) is False
         print("[CHECK] verify_platega_signature: неверная подпись отклоняется.")
 
+        # 1Ж: Проверка валидации через параметр secret_header (X-Secret)
+        assert platega_service.verify_platega_signature(test_body, signature_header="", secret_header=dummy_secret) is True
+        assert platega_service.verify_platega_signature(test_body, signature_header=None, secret_header=dummy_api_key) is True
+        assert platega_service.verify_platega_signature(test_body, signature_header="invalid_sig", secret_header=dummy_secret) is True
+        assert platega_service.verify_platega_signature(test_body, signature_header="invalid_sig", secret_header="wrong_secret") is False
+        print("[CHECK] verify_platega_signature: secret_header проверен успешно.")
+
     # 2. Проверка генерации ссылки create_platega_payment
     mock_post_response = MagicMock()
     mock_post_response.status_code = 200
@@ -555,7 +603,7 @@ async def test_platega_service_logic():
         "redirect": "https://pay.platega.io/checkout/test_session_12345"
     }
 
-    with patch.dict(os.environ, mock_env), \
+    with patch_env(mock_env), \
          patch("httpx.AsyncClient.post", AsyncMock(return_value=mock_post_response)) as mock_post:
         payment_url = await platega_service.create_platega_payment(telegram_id=999888, amount=299.0, days=30)
         assert payment_url == "https://pay.platega.io/checkout/test_session_12345"
@@ -590,9 +638,15 @@ async def test_platega_fastapi_endpoints():
         "PLATEGA_API_URL": "https://api.platega.io"
     }
 
-    # 1. Тестирование эндпоинта /api/create-payment
+    # 1. Тестирование эндпоинта /api/create-payment и /health
     transport = httpx.ASGITransport(app=main.app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1-0: Проверка health-check
+        res_health = await client.get("/health")
+        assert res_health.status_code == 200
+        assert res_health.json() == {"status": "ok"}
+        print("[CHECK] GET /health: эндпоинт отдает 200 {'status': 'ok'}.")
+
         # 1А: Запрос без заголовка initData -> 401
         res_no_auth = await client.post("/api/create-payment")
         assert res_no_auth.status_code == 401, f"Ожидался 401, получен {res_no_auth.status_code}"
@@ -620,16 +674,16 @@ async def test_platega_fastapi_endpoints():
             assert json_res.get("payment_url") == "https://pay.platega.io/test-order"
             print("[CHECK] /api/create-payment: успешное создание счета и возврат payment_url.")
 
-        # 1Г: Ошибка шлюза при создании счета -> 502 Bad Gateway
+        # 1Г: Внутренняя ошибка при создании счета -> 500 Внутренняя ошибка сервера
         with patch("main.verify_telegram_init_data", return_value={"id": 777666, "first_name": "Иван"}), \
              patch("main.create_platega_payment", AsyncMock(side_effect=RuntimeError("Connection timeout"))):
             res_gateway_err = await client.post(
                 "/api/create-payment",
                 headers={"X-Telegram-Init-Data": "dummy_valid_init_data"}
             )
-            assert res_gateway_err.status_code == 502
-            assert "Ошибка платежного шлюза" in res_gateway_err.json().get("detail", "")
-            print("[CHECK] /api/create-payment: сбой шлюза возвращает 502 с информативным описанием.")
+            assert res_gateway_err.status_code == 500
+            assert res_gateway_err.json().get("detail") == "Внутренняя ошибка сервера"
+            print("[CHECK] /api/create-payment: ошибка шлюза возвращает 500 'Внутренняя ошибка сервера' без раскрытия трейса.")
 
     # 2. Тестирование эндпоинта /api/webhook/platega
     import hmac, hashlib
@@ -666,11 +720,21 @@ async def test_platega_fastapi_endpoints():
     mock_supabase.table.side_effect = table_router
     main.PROCESSED_PAYMENTS.clear()
 
-    with patch.dict(os.environ, mock_env), \
+    with patch_env(mock_env), \
          patch("main.get_supabase", return_value=mock_supabase), \
          patch.object(main.bot, "send_message", AsyncMock()) as mock_bot_send:
 
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            # 2-Неверная подпись: строгий отказ 403 Invalid signature
+            res_bad_sig = await client.post(
+                "/api/webhook/platega",
+                json={"status": "CONFIRMED", "payload": "1439183990"},
+                headers={"X-Signature": "invalid_wrong_signature"}
+            )
+            assert res_bad_sig.status_code == 403
+            assert res_bad_sig.json().get("detail") == "Invalid signature"
+            print("[CHECK] /api/webhook/platega: неверная подпись отклоняется со статусом 403.")
+
             # 2А: Пропуск неактуального статуса (например, PENDING или FAILED)
             pending_payload = {"status": "PENDING", "payload": "1439183990"}
             res_pending = await client.post(
@@ -855,6 +919,94 @@ async def test_platega_fastapi_endpoints():
             assert res_idem_2.json().get("message") == "Already processed"
             assert not mock_table.upsert.called, "Повторный вебхук не должен повторно продлевать подписку в БД!"
             print("[CHECK] /api/webhook/platega: защита от повторных начислений (идемпотентность) подтверждена.")
+
+    # 3. Тестирование эндпоинта /api/check-subscription
+    with patch_env(mock_env), \
+         patch("main.get_supabase", return_value=mock_supabase):
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            # 3А: Новый пользователь -> trial_used: False, status_text: 'Пробный период', plan_type: 'trial'
+            mock_table.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+            mock_table.insert.reset_mock()
+            with patch("main.verify_telegram_init_data", return_value={"id": 111222, "first_name": "User"}):
+                res_sub_new = await client.get(
+                    "/api/check-subscription",
+                    headers={"X-Telegram-Init-Data": "valid_init_data"}
+                )
+                assert res_sub_new.status_code == 200
+                data_new = res_sub_new.json()
+                assert data_new["active"] is True
+                assert data_new["trial_used"] is False
+                assert data_new["status_text"] == "Пробный период"
+                assert data_new["plan_type"] == "trial"
+                assert mock_table.insert.called
+                assert mock_table.insert.call_args[0][0]["trial_used"] is False
+                print("[CHECK] /api/check-subscription: новый пользователь получает status_text='Пробный период', plan_type='trial'.")
+
+            # 3Б: Оплаченный пользователь (active=True, trial_used=True) -> status_text: 'Активна', plan_type: 'paid'
+            future_sub = (datetime.now(timezone.utc) + timedelta(days=20)).isoformat()
+            mock_table.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{
+                "subscription_until": future_sub,
+                "trial_used": True
+            }])
+            with patch("main.verify_telegram_init_data", return_value={"id": 111222, "first_name": "User"}):
+                res_sub_paid = await client.get(
+                    "/api/check-subscription",
+                    headers={"X-Telegram-Init-Data": "valid_init_data"}
+                )
+                assert res_sub_paid.status_code == 200
+                data_paid = res_sub_paid.json()
+                assert data_paid["active"] is True
+                assert data_paid["trial_used"] is True
+                assert data_paid["status_text"] == "Активна"
+                assert data_paid["plan_type"] == "paid"
+                print("[CHECK] /api/check-subscription: оплаченный пользователь получает status_text='Активна', plan_type='paid'.")
+
+            # 3В: Пользователь на триале (active=True, trial_used=False) -> status_text: 'Пробный период', plan_type: 'trial'
+            mock_table.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{
+                "subscription_until": future_sub,
+                "trial_used": False
+            }])
+            with patch("main.verify_telegram_init_data", return_value={"id": 111222, "first_name": "User"}):
+                res_sub_trial = await client.get(
+                    "/api/check-subscription",
+                    headers={"X-Telegram-Init-Data": "valid_init_data"}
+                )
+                assert res_sub_trial.status_code == 200
+                data_trial = res_sub_trial.json()
+                assert data_trial["active"] is True
+                assert data_trial["trial_used"] is False
+                assert data_trial["status_text"] == "Пробный период"
+                assert data_trial["plan_type"] == "trial"
+                print("[CHECK] /api/check-subscription: пользователь на триале получает status_text='Пробный период', plan_type='trial'.")
+
+            # 3Г: Истекшая подписка -> status_text: 'Истекла', plan_type: 'none', active: False
+            past_sub = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+            mock_table.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{
+                "subscription_until": past_sub,
+                "trial_used": True
+            }])
+            with patch("main.verify_telegram_init_data", return_value={"id": 111222, "first_name": "User"}):
+                res_sub_exp = await client.get(
+                    "/api/check-subscription",
+                    headers={"X-Telegram-Init-Data": "valid_init_data"}
+                )
+                assert res_sub_exp.status_code == 200
+                data_exp = res_sub_exp.json()
+                assert data_exp["active"] is False
+                assert data_exp["status_text"] == "Истекла"
+                assert data_exp["plan_type"] == "none"
+                print("[CHECK] /api/check-subscription: истекшая подписка получает status_text='Истекла', plan_type='none'.")
+
+            # 3Д: Внутренняя ошибка сервера -> 500 'Внутренняя ошибка сервера'
+            mock_table.select.return_value.eq.return_value.execute.side_effect = RuntimeError("DB connection error")
+            with patch("main.verify_telegram_init_data", return_value={"id": 111222, "first_name": "User"}):
+                res_sub_err = await client.get(
+                    "/api/check-subscription",
+                    headers={"X-Telegram-Init-Data": "valid_init_data"}
+                )
+                assert res_sub_err.status_code == 500
+                assert res_sub_err.json().get("detail") == "Внутренняя ошибка сервера"
+                print("[CHECK] /api/check-subscription: внутренняя ошибка возвращает 500 'Внутренняя ошибка сервера'.")
 
     print("\n✅ ТЕСТ 8 УСПЕШНО ПРОЙДЕН!\n")
 
