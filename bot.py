@@ -326,7 +326,7 @@ async def get_profile_text(telegram_id: int, first_name: str) -> str:
     now_utc = datetime.now(timezone.utc)
     supabase = get_supabase()
 
-    status_line = "🔴 Статус: <b>Не оформлена</b>"
+    status_badge = "🔴 <b>Не активна</b>"
     expires_str = "—"
 
     if supabase:
@@ -334,30 +334,32 @@ async def get_profile_text(telegram_id: int, first_name: str) -> str:
             response = supabase.table("subscriptions").select("subscription_until, trial_used").eq("telegram_id", telegram_id).execute()
             data = response.data
             if data and data[0].get("subscription_until"):
-                sub_str = str(data[0]["subscription_until"]).replace("Z", "+00:00").replace(" ", "T")
+                row = data[0]
+                sub_str = str(row.get("subscription_until")).replace("Z", "+00:00").replace(" ", "T")
                 sub_until = datetime.fromisoformat(sub_str)
                 if sub_until.tzinfo is None:
                     sub_until = sub_until.replace(tzinfo=timezone.utc)
-                trial_used = bool(data[0].get("trial_used", False))
+                trial_used = bool(row.get("trial_used", False))
+                is_active = sub_until > now_utc
                 expires_str = f"{sub_until.strftime('%d.%m.%Y %H:%M')} (UTC)"
-                if sub_until > now_utc:
+                if is_active:
                     if trial_used:
-                        status_line = "🟢 Статус: <b>Подписка активна</b>"
+                        status_badge = "🟢 <b>Подписка активна</b>"
                     else:
-                        status_line = "🟡 Статус: <b>Пробный период</b>"
+                        status_badge = "🟡 <b>Пробный период (5 дней)</b>"
                 else:
-                    status_line = "🔴 Статус: <b>Срок действия истек</b>"
+                    status_badge = "🔴 <b>Не активна</b>"
             else:
-                status_line = "🔴 Статус: <b>Не оформлена</b>"
+                status_badge = "🔴 <b>Не активна</b>"
         except Exception as e:
             logger.error(f"Ошибка получения профиля из Supabase: {e}")
-            status_line = "⚠️ Статус: <b>Ошибка проверки</b>"
+            status_badge = "⚠️ <b>Ошибка проверки</b>"
 
     return (
         f"👤 <b>Профиль пользователя</b>\n\n"
         f"🆔 <b>Telegram ID:</b> <code>{telegram_id}</code>\n"
         f"👤 <b>Имя:</b> {first_name}\n"
-        f"{status_line}\n"
+        f"📊 <b>Статус доступа:</b> {status_badge}\n"
         f"⏳ <b>Действует до:</b> {expires_str}"
     )
 

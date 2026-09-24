@@ -285,7 +285,7 @@ async def test_bot_callbacks():
         print(f"[CHECK] Ответ на callback bot_profile (edit_text):\n{profile_text}")
         assert str(test_user_id) in profile_text
         assert "Елена" in profile_text
-        assert "🟢 Статус: <b>Подписка активна</b>" in profile_text
+        assert "🟢 <b>Подписка активна</b>" in profile_text
         assert "Подписка активна" in profile_text
         assert future_date.strftime("%d.%m.%Y %H:%M") in profile_text
         
@@ -302,11 +302,22 @@ async def test_bot_callbacks():
         }])
         await bot.process_profile_callback(mock_cb)
         trial_profile_text = mock_cb.message.edit_text.call_args[0][0]
-        assert "🟡 Статус: <b>Пробный период</b>" in trial_profile_text
-        assert "🟢 Статус: <b>Подписка активна</b>" not in trial_profile_text
-        print("[CHECK] Меню профиля: для trial_used=False отображается 'Пробный период'.")
+        assert "🟡 <b>Пробный период (5 дней)</b>" in trial_profile_text
+        assert "🟢 <b>Подписка активна</b>" not in trial_profile_text
+        print("[CHECK] Меню профиля: для trial_used=False отображается '🟡 <b>Пробный период (5 дней)</b>'.")
 
-        # 1В. Проверяем команду /profile
+        # 1В. Проверяем bot_profile для пользователя с неактивной подпиской
+        mock_eq.execute.return_value = MagicMock(data=[{
+            "telegram_id": test_user_id,
+            "subscription_until": (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
+            "trial_used": True
+        }])
+        await bot.process_profile_callback(mock_cb)
+        inactive_profile_text = mock_cb.message.edit_text.call_args[0][0]
+        assert "🔴 <b>Не активна</b>" in inactive_profile_text
+        print("[CHECK] Меню профиля: для неактивной подписки отображается '🔴 <b>Не активна</b>'.")
+
+        # 1Г. Проверяем команду /profile
         mock_cmd_msg = AsyncMock()
         mock_cmd_msg.from_user.id = test_user_id
         mock_cmd_msg.from_user.first_name = "Елена"
@@ -316,7 +327,7 @@ async def test_bot_callbacks():
         await bot.command_profile_handler(mock_cmd_msg)
         assert mock_cmd_msg.answer.called
         cmd_profile_text = mock_cmd_msg.answer.call_args[0][0]
-        assert "Пробный период" in cmd_profile_text
+        assert "Не активна" in cmd_profile_text
         print("[CHECK] Команда /profile работает корректно.")
 
         # 2. Проверяем bot_terms
@@ -352,6 +363,11 @@ async def test_bot_callbacks():
         # 3. Проверяем back_to_menu
         mock_cb.reset_mock()
         mock_cb.message.reset_mock()
+        mock_eq.execute.return_value = MagicMock(data=[{
+            "telegram_id": test_user_id,
+            "subscription_until": future_date.isoformat(),
+            "trial_used": True
+        }])
 
         await bot.process_back_to_menu_callback(mock_cb)
         assert mock_cb.answer.called

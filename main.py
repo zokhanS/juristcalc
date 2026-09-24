@@ -318,10 +318,7 @@ async def platega_webhook(request: Request):
             request.headers.get("Signature") or 
             ""
         )
-        secret_header = (
-            request.headers.get("X-Secret") or 
-            ""
-        )
+        secret_header = request.headers.get("X-Secret") or ""
 
         try:
             data = json.loads(raw_body.decode("utf-8")) if raw_body else {}
@@ -329,13 +326,12 @@ async def platega_webhook(request: Request):
             data = {}
         logger.info(f"[Platega Webhook] Получены данные: {data}, Headers: {dict(request.headers)}")
 
-        # Если подпись передана внутри JSON
-        if not signature and isinstance(data, dict) and "signature" in data:
+        # Если в X-Signature ничего нет, но signature передана в JSON-теле:
+        if not signature and "signature" in data:
             signature = str(data["signature"])
 
-        # Валидация подписи (если не прошла — немедленный отказ 403)
-        if not verify_platega_signature(raw_body, signature_header=signature, secret_header=secret_header):
-            logger.warning("[Platega Webhook] Отклонен запрос с неверной подписью")
+        if not verify_platega_signature(raw_body, signature, secret_header):
+            logger.warning("[Platega Webhook] Отклонен запрос: недействительная подпись/секрет")
             raise HTTPException(status_code=403, detail="Invalid signature")
 
         data_nested = data.get("data") if isinstance(data.get("data"), dict) else {}
